@@ -342,8 +342,8 @@ function MapPins.Refresh()
 			-- dedicate a frame to one kind forever), so size has to be set
 			-- fresh each refresh, not just once at creation. Both kinds
 			-- render at the same size now, adjustable via the
-			-- small/medium/large setting (see Waypoints.IconSize).
-			local sz = PC.Waypoints.IconSize()
+			-- small/medium/large setting (see Waypoints.MapIconSize).
+			local sz = PC.Waypoints.MapIconSize()
 			pin:SetSize(sz, sz)
 			placePin(pin, canvas, width, height, wp.position.x, wp.position.y)
 			local status = (wp.kind == "T")

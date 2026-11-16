@@ -33,6 +33,8 @@ local COLORS = {
 
 local SLIDERS = {
 	{ key = "hudOpacity", label = "Compass HUD background opacity", min = 0, max = 1, steps = 20 },
+	{ key = "compassWidth", label = "Compass width", min = 250, max = 700, steps = 45, round = true },
+	{ key = "compassHeight", label = "Compass height", min = 48, max = 120, steps = 18, round = true },
 }
 
 local ICON_SIZES = {
@@ -41,11 +43,18 @@ local ICON_SIZES = {
 	{ value = "large", label = "Large" },
 }
 
+-- Two independent radio groups -- the compass HUD and the world map each
+-- get their own waypoint icon size now, instead of one shared setting.
+local ICON_SIZE_GROUPS = {
+	{ key = "compassIconSize", label = "Compass waypoint icon size" },
+	{ key = "mapIconSize", label = "Map waypoint icon size" },
+}
+
 local ROW_SPACING = 30
 local checkboxes = {}
 local colorSwatches = {}
 local sliderSyncs = {}
-local iconSizeBoxes = {}
+local iconSizeBoxes = {} -- [groupKey][sizeValue] = checkbox
 local category
 
 local function GetValue(option)
@@ -110,6 +119,10 @@ local function PercentText(value)
 	return string.format("%d%%", math.floor(value * 100 + 0.5))
 end
 
+local function PixelText(value)
+	return string.format("%dpx", math.floor(value + 0.5))
+end
+
 -- Blizzard's own slider-with-arrow-buttons template (MinimalSliderWithSteppersTemplate),
 -- confirmed real and used this exact way (Init/RegisterCallback signature,
 -- re-syncing with SetValue) by ProfitCraft's own working settings page on
@@ -122,10 +135,11 @@ local function BuildSlider(canvas, option, x, y)
 	local slider = CreateFrame("Frame", nil, canvas, "MinimalSliderWithSteppersTemplate")
 	slider:SetWidth(220)
 	slider:SetPoint("TOPLEFT", x + 8, y - ROW_SPACING + 4)
+	local formatter = option.round and PixelText or PercentText
 	slider:Init(PC.db.options[option.key], option.min, option.max, option.steps,
-		{ [MinimalSliderWithSteppersMixin.Label.Right] = PercentText })
+		{ [MinimalSliderWithSteppersMixin.Label.Right] = formatter })
 	slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
-		PC.db.options[option.key] = value
+		PC.db.options[option.key] = option.round and math.floor(value + 0.5) or value
 		if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
 	end, canvas)
 
@@ -147,21 +161,28 @@ local function BuildCheckbox(canvas, option, x, y)
 end
 
 local function SyncIconSizeBoxes()
-	local current = PC.db.options.waypointIconSize
-	for _, entry in ipairs(ICON_SIZES) do
-		iconSizeBoxes[entry.value]:SetChecked(entry.value == current)
+	for _, group in ipairs(ICON_SIZE_GROUPS) do
+		local current = PC.db.options[group.key]
+		local boxes = iconSizeBoxes[group.key]
+		if boxes then
+			for _, entry in ipairs(ICON_SIZES) do
+				boxes[entry.value]:SetChecked(entry.value == current)
+			end
+		end
 	end
 end
 
 -- Three checkboxes acting as a mutually-exclusive radio group (picking one
 -- unchecks the others) -- built from the same plain UICheckButtonTemplate
 -- as everything else here rather than reaching for a dropdown widget, so
--- there's nothing new to verify.
-local function BuildIconSizeRow(canvas, x, y)
+-- there's nothing new to verify. One of these is built per entry in
+-- ICON_SIZE_GROUPS (compass, map), each independent of the other.
+local function BuildIconSizeRow(canvas, group, x, y)
 	local label = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	label:SetPoint("TOPLEFT", x, y)
-	label:SetText("Waypoint icon size")
+	label:SetText(group.label)
 
+	iconSizeBoxes[group.key] = iconSizeBoxes[group.key] or {}
 	for i, entry in ipairs(ICON_SIZES) do
 		local box = CreateFrame("CheckButton", nil, canvas, "UICheckButtonTemplate")
 		box:SetPoint("TOPLEFT", x + 8, y - 20 - (i - 1) * 24)
@@ -169,7 +190,7 @@ local function BuildIconSizeRow(canvas, x, y)
 		box.Text:SetFontObject("GameFontHighlight")
 		box:SetScript("OnClick", function(self)
 			if self:GetChecked() then
-				PC.db.options.waypointIconSize = entry.value
+				PC.db.options[group.key] = entry.value
 				SyncIconSizeBoxes()
 				if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
 				if PC.MapPins and PC.MapPins.Refresh then PC.MapPins.Refresh() end
@@ -179,7 +200,7 @@ local function BuildIconSizeRow(canvas, x, y)
 				self:SetChecked(true)
 			end
 		end)
-		iconSizeBoxes[entry.value] = box
+		iconSizeBoxes[group.key][entry.value] = box
 	end
 end
 
@@ -202,8 +223,13 @@ local function BuildPage(canvas)
 		BuildSlider(canvas, option, 16, sliderRowY - (i - 1) * ROW_SPACING * 2)
 	end
 
+	-- Each icon-size group takes a label row plus 3 checkbox rows (20 + 3*24),
+	-- with a 10px gap before the next group.
+	local ICON_SIZE_GROUP_HEIGHT = 20 + 3 * 24 + 10
 	local iconSizeRowY = sliderRowY - #SLIDERS * ROW_SPACING * 2 - 10
-	BuildIconSizeRow(canvas, 16, iconSizeRowY)
+	for i, group in ipairs(ICON_SIZE_GROUPS) do
+		BuildIconSizeRow(canvas, group, 16, iconSizeRowY - (i - 1) * ICON_SIZE_GROUP_HEIGHT)
+	end
 
 	canvas:SetScript("OnShow", function()
 		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end

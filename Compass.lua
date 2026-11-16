@@ -323,17 +323,37 @@ local function applyPortrait(icon, unit, alpha)
 	icon.label:SetText("")
 end
 
+-- Gap between the two background panels (ticks+letters on top, icons on
+-- bottom) -- see Compass.Init's original comment for how this was tuned.
+-- Kept as a fixed constant (not a setting) since it's about the split
+-- between the two panels, not the compass's overall size.
+local PANEL_GAP = 3
+
+-- Both the icon row's distance below center and the letters' distance
+-- below the top edge come out to exactly compassHeight * 0.25 at the
+-- original hand-tuned default (64 tall, -16 offset) -- using that same
+-- fraction here means a custom height keeps the same proportions/look
+-- instead of icons drifting outside their panel.
+function Compass.IconYOffset()
+	return -(PC.db.options.compassHeight * 0.25)
+end
+
 function Compass.Refresh()
 	if not frame then return end
 	frame:SetShown(PC.db.options.compassEnabled)
+	frame:SetSize(PC.db.options.compassWidth, PC.db.options.compassHeight)
 	if centerTick then
 		local c = PC.db.options.centerLineColor
 		centerTick:SetColorTexture(c[1], c[2], c[3], 0.8)
+		centerTick:SetSize(2, PC.db.options.compassHeight)
 	end
 	if bgTop and bgBottom then
 		local c, a = PC.db.options.hudColor, PC.db.options.hudOpacity
+		local panelHeight = (PC.db.options.compassHeight - PANEL_GAP) / 2
 		bgTop:SetColorTexture(c[1], c[2], c[3], a)
+		bgTop:SetHeight(panelHeight)
 		bgBottom:SetColorTexture(c[1], c[2], c[3], a)
+		bgBottom:SetHeight(panelHeight)
 	end
 end
 
@@ -381,6 +401,7 @@ local function updateCompass()
 	local fov = PC.db.options.fieldOfView
 	local heading = facingDegrees()
 	if not heading then return end -- can't compute right now -- retried next frame automatically
+	local iconY = Compass.IconYOffset()
 
 	-- Cardinal letters
 	local lc = PC.db.options.letterColor
@@ -398,7 +419,7 @@ local function updateCompass()
 			-- ticks and the letters, which read as "letters too low". -16
 			-- (was -18) leaves a clean 4px gap to the icon row below for
 			-- the two-section background split (see Compass.Init).
-			l:SetPoint("TOP", strip, "TOP", headingToPixel(diff, width, fov), -16)
+			l:SetPoint("TOP", strip, "TOP", headingToPixel(diff, width, fov), iconY)
 			l:Show()
 		end
 	end
@@ -446,16 +467,16 @@ local function updateCompass()
 	-- -16 (was -14): with letters now anchored right below the ticks
 	-- instead of dead-center, the icon row needs to sit a bit lower to
 	-- clear them without overlapping -- see the letter anchor's comment.
-	renderBearingIcons(wpPool, acquireWp, activeWaypoints, px, py, heading, width, fov, -16, function(icon, item)
+	renderBearingIcons(wpPool, acquireWp, activeWaypoints, px, py, heading, width, fov, iconY, function(icon, item)
 		-- Permanent waypoints are always white; temp ones round-robin
 		-- through COLOR_SEQUENCE (1st = light blue, 2nd = green, ...) so
 		-- you can tell which one's which at a glance -- see Waypoints.lua
 		-- for why the two colors never overlap. Both kinds render at the
 		-- same size now (adjustable via the small/medium/large setting --
-		-- see Waypoints.IconSize). Icons are reused across both kinds over
+		-- see Waypoints.CompassIconSize). Icons are reused across both kinds over
 		-- time, so size/texture/color have to be set fresh each render.
 		local c = (item.kind == "P") and PC.Waypoints.PERMANENT_COLOR or PC.Waypoints.colorForIndex(item.colorIndex or 1)
-		local sz = PC.Waypoints.IconSize()
+		local sz = PC.Waypoints.CompassIconSize()
 		icon:SetSize(sz, sz)
 		icon.bg:SetTexture(item.kind == "P" and WAYPOINT_TEXTURE_PERMANENT or WAYPOINT_TEXTURE_TEMP)
 		icon.bg:SetVertexColor(c[1], c[2], c[3], 1)
@@ -478,7 +499,7 @@ local function updateCompass()
 	-- Only quests Blizzard actually attached waypoint data to can show up
 	-- at all (see Quests.lua) -- that's a real coverage gap, not a bug.
 	if PC.db.options.showQuests then
-		renderBearingIcons(questPool, acquireQuest, throttled("quests", PC.Quests.GetAll), px, py, heading, width, fov, -16,
+		renderBearingIcons(questPool, acquireQuest, throttled("quests", PC.Quests.GetAll), px, py, heading, width, fov, iconY,
 			function(icon, item)
 				-- Tracked (watched) quests CAN render bigger with a gold
 				-- highlight square behind them -- turned off for now (flip
@@ -551,7 +572,7 @@ local function updateCompass()
 						icon.unit = member.unit -- for the hover tooltip (see makePartyPool)
 						icon:SetSize(28, 28) -- same size as permanent waypoints
 						icon:ClearAllPoints()
-						icon:SetPoint("CENTER", strip, "CENTER", headingToPixel(diff, width, fov), -16) -- bottom row, same as waypoints
+						icon:SetPoint("CENTER", strip, "CENTER", headingToPixel(diff, width, fov), iconY) -- bottom row, same as waypoints
 						applyPortrait(icon, member.unit, 1)
 						icon:Show()
 						placed = true
@@ -567,7 +588,7 @@ local function updateCompass()
 				icon.unit = member.unit -- for the hover tooltip (see makePartyPool)
 				icon:SetSize(28, 28) -- same size as permanent waypoints
 				icon:ClearAllPoints()
-				icon:SetPoint("RIGHT", strip, "RIGHT", -4, -16 - (edgeShown - 1) * 18)
+				icon:SetPoint("RIGHT", strip, "RIGHT", -4, iconY - (edgeShown - 1) * 18)
 				applyPortrait(icon, member.unit, 0.45)
 				icon:Show()
 			end
@@ -577,12 +598,13 @@ local function updateCompass()
 end
 
 function Compass.Init()
-	-- 64 tall (was 44): the bottom-row icons are 28px, centered 14px below
-	-- the strip's middle -- their bottom edge sits 28px below center, which
-	-- didn't fit inside the old 44px-tall (+-22) frame and overhung the
-	-- background by ~6px. 64px (+-32) gives them room with a small margin.
+	-- Size/height is applied below via Compass.Refresh() (from
+	-- compassWidth/compassHeight, both real settings now) -- default 64
+	-- tall: the bottom-row icons are 28px, centered 14px below the strip's
+	-- middle -- their bottom edge sits 28px below center, which didn't fit
+	-- inside the old 44px-tall (+-22) frame and overhung the background by
+	-- ~6px. 64px (+-32) gives them room with a small margin.
 	frame = CreateFrame("Frame", "WayfinderHUD", UIParent)
-	frame:SetSize(PC.db.options.compassWidth, 64)
 	frame:SetPoint("TOP", UIParent, "TOP", 0, -4)
 	frame:SetFrameStrata("LOW")
 
@@ -592,25 +614,24 @@ function Compass.Init()
 	-- opacity panel each, with a gap of nothing between them rather than
 	-- one unbroken bar. 3px gap (was 2px, +50% as asked) -- letters bottom
 	-- out around y=+2 and icons start around y=-2, so a split at +-1.5
-	-- sits cleanly between both without clipping either.
+	-- sits cleanly between both without clipping either. Heights applied
+	-- below via Compass.Refresh().
 	bgTop = frame:CreateTexture(nil, "BACKGROUND")
 	bgTop:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
 	bgTop:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-	bgTop:SetHeight(30.5)
 
 	bgBottom = frame:CreateTexture(nil, "BACKGROUND")
 	bgBottom:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
 	bgBottom:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-	bgBottom:SetHeight(30.5)
-	-- Color/opacity applied below via Compass.Refresh(), from saved settings.
+	-- Color/opacity/height applied below via Compass.Refresh(), from saved settings.
 
 	strip = CreateFrame("Frame", nil, frame)
 	strip:SetAllPoints()
 
 	centerTick = frame:CreateTexture(nil, "OVERLAY")
-	centerTick:SetSize(2, 64)
 	centerTick:SetPoint("CENTER")
 	centerTick:SetColorTexture(1, 1, 1, 0.8)
+	-- Size applied below via Compass.Refresh().
 
 	-- Runs every frame, not throttled: the math here (a handful of trig calls
 	-- over a dozen-ish markers) is cheap, and anything coarser than ~60fps
