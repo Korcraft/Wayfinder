@@ -1,0 +1,20 @@
+## Interface: 16001
+## Interface-Camelot: 16001
+## Title: PartyCompass
+## Notes: Shared party waypoints, map pings, and a directional HUD compass.
+## Author: YourName
+## Version: 0.1.0
+## SavedVariables: PartyCompassDB
+## X-License: MIT
+
+Core.lua
+Comm.lua
+Waypoints.lua
+PartyTracker.lua
+Quests.lua
+POI.lua
+IconStyle.lua
+MapPins.lua
+Compass.lua
+Pings.lua
+Settings.lua

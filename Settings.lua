@@ -1,0 +1,233 @@
+-- PartyCompass: Settings.lua
+-- Real settings panel under Options > AddOns > PartyCompass, built with
+-- Blizzard's own checkbox template (UICheckButtonTemplate) and registered
+-- through the modern Settings API -- Settings.RegisterCanvasLayoutCategory
+-- / Settings.RegisterAddOnCategory / Settings.OpenToCategory are confirmed
+-- real and in active use on this client (Auctionator, Baganator,
+-- ProfitCraft, Syndicator). The older InterfaceOptions_AddCategory is
+-- deprecated and intentionally not used here.
+
+local PC = PartyCompass
+PC.Settings = PC.Settings or {}
+local ModuleSettings = PC.Settings
+
+local OPTIONS = {
+	{ key = "compassEnabled", label = "Show the compass HUD",
+		help = "Shows or hides the compass strip at the top of the screen." },
+	{ key = "showParty", label = "Show party members",
+		help = "Shows party members as bearing icons on the compass and as pins on the map." },
+	{ key = "showQuests", label = "Show quest objectives on the compass",
+		help = "Shows a bearing icon for quests in your quest log whose objective is in your current zone. "
+			.. "Only quests Blizzard attached waypoint data to can show up -- some quests never will." },
+	{ key = "partyIconDots", label = "Use class-color dots instead of portraits",
+		help = "Shows party members as a flat class-color dot instead of their real portrait, "
+			.. "on both the compass and the map." },
+}
+
+local COLORS = {
+	{ key = "centerLineColor", label = "Compass center line color" },
+	{ key = "tickColor", label = "Compass tick color" },
+	{ key = "letterColor", label = "Compass letter color" },
+	{ key = "hudColor", label = "Compass HUD background color" },
+}
+
+local SLIDERS = {
+	{ key = "hudOpacity", label = "Compass HUD background opacity", min = 0, max = 1, steps = 20 },
+}
+
+local ICON_SIZES = {
+	{ value = "small", label = "Small" },
+	{ value = "medium", label = "Medium" },
+	{ value = "large", label = "Large" },
+}
+
+local ROW_SPACING = 30
+local checkboxes = {}
+local colorSwatches = {}
+local sliderSyncs = {}
+local iconSizeBoxes = {}
+local category
+
+local function GetValue(option)
+	return PC.db.options[option.key] and true or false
+end
+
+local function SetValue(option, value)
+	PC.db.options[option.key] = value
+	if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
+	if PC.MapPins and PC.MapPins.Refresh then PC.MapPins.Refresh() end
+end
+
+local function ShowHelp(owner, option)
+	GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+	GameTooltip:AddLine(option.label, 1, 1, 1)
+	GameTooltip:AddLine(option.help, nil, nil, nil, true)
+	GameTooltip:Show()
+end
+
+-- Blizzard's own color-swatch-plus-picker pattern (ColorSwatchTemplate +
+-- ColorPickerFrame:SetupColorPickerAndShow) -- confirmed real and used this
+-- exact way, including the closure-captured cancelFunc, by Baganator on
+-- this client, so this isn't guessed from memory.
+local function BuildColorSwatch(canvas, option, x, y)
+	local label = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	label:SetPoint("TOPLEFT", x, y)
+	label:SetText(option.label)
+
+	local swatch = CreateFrame("Button", nil, canvas, "ColorSwatchTemplate")
+	swatch:SetPoint("LEFT", label, "RIGHT", 10, 0)
+
+	local function applyCurrent()
+		local c = PC.db.options[option.key]
+		swatch:SetColorRGB(c[1], c[2], c[3])
+	end
+	applyCurrent()
+
+	swatch:SetScript("OnClick", function()
+		local before = PC.db.options[option.key]
+		local beforeR, beforeG, beforeB = before[1], before[2], before[3]
+		local info = {}
+		info.r, info.g, info.b = beforeR, beforeG, beforeB
+		info.swatchFunc = function()
+			local r, g, b = ColorPickerFrame:GetColorRGB()
+			PC.db.options[option.key] = { r, g, b }
+			swatch:SetColorRGB(r, g, b)
+			if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
+		end
+		info.cancelFunc = function()
+			PC.db.options[option.key] = { beforeR, beforeG, beforeB }
+			swatch:SetColorRGB(beforeR, beforeG, beforeB)
+			if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
+		end
+		ColorPickerFrame:SetupColorPickerAndShow(info)
+	end)
+
+	colorSwatches[option] = applyCurrent
+	return swatch
+end
+
+local function PercentText(value)
+	return string.format("%d%%", math.floor(value * 100 + 0.5))
+end
+
+-- Blizzard's own slider-with-arrow-buttons template (MinimalSliderWithSteppersTemplate),
+-- confirmed real and used this exact way (Init/RegisterCallback signature,
+-- re-syncing with SetValue) by ProfitCraft's own working settings page on
+-- this client.
+local function BuildSlider(canvas, option, x, y)
+	local label = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	label:SetPoint("TOPLEFT", x + 4, y - 6)
+	label:SetText(option.label)
+
+	local slider = CreateFrame("Frame", nil, canvas, "MinimalSliderWithSteppersTemplate")
+	slider:SetWidth(220)
+	slider:SetPoint("TOPLEFT", x + 8, y - ROW_SPACING + 4)
+	slider:Init(PC.db.options[option.key], option.min, option.max, option.steps,
+		{ [MinimalSliderWithSteppersMixin.Label.Right] = PercentText })
+	slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
+		PC.db.options[option.key] = value
+		if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
+	end, canvas)
+
+	sliderSyncs[option] = function() slider:SetValue(PC.db.options[option.key]) end
+	return slider
+end
+
+local function BuildCheckbox(canvas, option, x, y)
+	local box = CreateFrame("CheckButton", nil, canvas, "UICheckButtonTemplate")
+	box:SetPoint("TOPLEFT", x, y)
+	box.Text:SetText(option.label)
+	box.Text:SetFontObject("GameFontHighlight")
+	box:SetScript("OnClick", function(self)
+		SetValue(option, self:GetChecked() and true or false)
+	end)
+	box:SetScript("OnEnter", function(self) ShowHelp(self, option) end)
+	box:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	return box
+end
+
+local function SyncIconSizeBoxes()
+	local current = PC.db.options.waypointIconSize
+	for _, entry in ipairs(ICON_SIZES) do
+		iconSizeBoxes[entry.value]:SetChecked(entry.value == current)
+	end
+end
+
+-- Three checkboxes acting as a mutually-exclusive radio group (picking one
+-- unchecks the others) -- built from the same plain UICheckButtonTemplate
+-- as everything else here rather than reaching for a dropdown widget, so
+-- there's nothing new to verify.
+local function BuildIconSizeRow(canvas, x, y)
+	local label = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	label:SetPoint("TOPLEFT", x, y)
+	label:SetText("Waypoint icon size")
+
+	for i, entry in ipairs(ICON_SIZES) do
+		local box = CreateFrame("CheckButton", nil, canvas, "UICheckButtonTemplate")
+		box:SetPoint("TOPLEFT", x + 8, y - 20 - (i - 1) * 24)
+		box.Text:SetText(entry.label)
+		box.Text:SetFontObject("GameFontHighlight")
+		box:SetScript("OnClick", function(self)
+			if self:GetChecked() then
+				PC.db.options.waypointIconSize = entry.value
+				SyncIconSizeBoxes()
+				if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
+				if PC.MapPins and PC.MapPins.Refresh then PC.MapPins.Refresh() end
+			else
+				-- Don't allow unchecking the active size directly -- one
+				-- of the three must always be selected.
+				self:SetChecked(true)
+			end
+		end)
+		iconSizeBoxes[entry.value] = box
+	end
+end
+
+local function BuildPage(canvas)
+	local title = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
+	title:SetPoint("TOPLEFT", 16, -16)
+	title:SetText("PartyCompass")
+
+	for i, option in ipairs(OPTIONS) do
+		checkboxes[option] = BuildCheckbox(canvas, option, 16, -52 - (i - 1) * ROW_SPACING)
+	end
+
+	local colorRowY = -52 - #OPTIONS * ROW_SPACING - 10
+	for i, option in ipairs(COLORS) do
+		BuildColorSwatch(canvas, option, 16, colorRowY - (i - 1) * ROW_SPACING)
+	end
+
+	local sliderRowY = colorRowY - #COLORS * ROW_SPACING - 10
+	for i, option in ipairs(SLIDERS) do
+		BuildSlider(canvas, option, 16, sliderRowY - (i - 1) * ROW_SPACING * 2)
+	end
+
+	local iconSizeRowY = sliderRowY - #SLIDERS * ROW_SPACING * 2 - 10
+	BuildIconSizeRow(canvas, 16, iconSizeRowY)
+
+	canvas:SetScript("OnShow", function()
+		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end
+		for _, applyCurrent in pairs(colorSwatches) do applyCurrent() end
+		for _, applyCurrentSlider in pairs(sliderSyncs) do applyCurrentSlider() end
+		SyncIconSizeBoxes()
+	end)
+end
+
+function ModuleSettings.Init()
+	if not (Settings and Settings.RegisterCanvasLayoutCategory and Settings.RegisterAddOnCategory) then
+		return
+	end
+	local canvas = CreateFrame("Frame", nil, UIParent)
+	canvas:Hide()
+	BuildPage(canvas)
+	category = Settings.RegisterCanvasLayoutCategory(canvas, "PartyCompass")
+	Settings.RegisterAddOnCategory(category)
+end
+
+function ModuleSettings.Open()
+	if category and Settings and Settings.OpenToCategory then
+		Settings.OpenToCategory(category:GetID())
+	else
+		print("|cffff4444PartyCompass|r settings panel isn't available on this client.")
+	end
+end
