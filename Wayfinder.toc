@@ -2,8 +2,8 @@
 ## Interface-Camelot: 16001
 ## Title: Wayfinder
 ## Notes: Shared party waypoints, map pings, and a directional HUD compass.
-## Author: YourName
-## Version: 0.1.0
+## Author: Korcraft
+## Version: 0.2.0
 ## SavedVariables: WayfinderDB
 ## X-License: MIT
 

@@ -18,11 +18,14 @@ function Comm.Init()
 end
 
 -- Picks the right channel for whatever group the player is currently in.
--- (Scenario/LFR groups use INSTANCE_CHAT instead of PARTY -- if you plan to
--- use this inside those, check IsInGroup(LE_PARTY_CATEGORY_INSTANCE) and
--- route to "INSTANCE_CHAT" here too. Left out for v1 to keep this simple.)
+-- Scenario/LFR groups need INSTANCE_CHAT instead of PARTY/RAID -- confirmed
+-- real (LE_PARTY_CATEGORY_INSTANCE, "INSTANCE_CHAT") via Details' own
+-- working network code on this client. Checked first since an instance
+-- group would also read true for plain IsInGroup()/IsInRaid().
 local function currentChannel()
-	if IsInRaid() then
+	if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+		return "INSTANCE_CHAT"
+	elseif IsInRaid() then
 		return "RAID"
 	elseif IsInGroup() then
 		return "PARTY"

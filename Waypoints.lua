@@ -140,12 +140,9 @@ function Waypoints.Add(name, iconNum, isTemp)
 		print("|cffff4444Wayfinder|r couldn't determine your position.")
 		return
 	end
-	local entry = Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
-	if isTemp then
-		print(string.format("|cff33ff99Wayfinder|r temporary waypoint \"%s\" set (expires in 15 min) and shared with your party.", entry.name))
-	else
-		print(string.format("|cff33ff99Wayfinder|r permanent waypoint \"%s\" set (local to you only).", entry.name))
-	end
+	-- No success print on purpose -- the icon appearing is the feedback,
+	-- same reasoning as the silent map-click path (see MapPins.lua).
+	Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
 end
 
 -- Removes one of YOUR OWN waypoints by name and tells your party it's gone.
@@ -164,7 +161,6 @@ function Waypoints.Remove(name)
 			end
 			if PC.MapPins then PC.MapPins.Refresh() end
 			if PC.Compass then PC.Compass.Refresh() end
-			print("|cff33ff99Wayfinder|r waypoint \"" .. name .. "\" removed.")
 			return
 		end
 	end
@@ -190,7 +186,6 @@ function Waypoints.ClearAll()
 	end
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print(string.format("|cff33ff99Wayfinder|r cleared %d of your waypoint(s).", count))
 end
 
 -- Wipes EVERY waypoint in your saved data, including ones received from
@@ -209,7 +204,6 @@ function Waypoints.WipeAll()
 	end
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print(string.format("|cff33ff99Wayfinder|r wiped %d waypoint(s) total (yours and any received).", count))
 end
 
 -- Renames one of YOUR OWN waypoints by id (used by double-clicking a
@@ -224,7 +218,6 @@ function Waypoints.Rename(id, newName)
 	entry.name = newName
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print("|cff33ff99Wayfinder|r waypoint renamed to \"" .. newName .. "\".")
 end
 
 -- "Close enough to what you clicked" tolerance for removing a waypoint by

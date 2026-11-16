@@ -86,7 +86,6 @@ local function printHelp()
 	print("                              Alt+click = permanent waypoint (local only)")
 	print("                              Shift+click = remove nearest of yours (confirms first if permanent)")
 	print("                              Right-click is untouched -- that's still the map's native zoom-out")
-	print("  (ping is shelved for now while this is being tested)")
 	print("  /wf wp temp <name>            - add a waypoint at your current position")
 	print("  /wf wp remove <name>          - remove one of YOUR waypoints by name")
 	print("  /wf wp clear                  - remove ALL of your own waypoints at once (clears test clutter)")
@@ -96,17 +95,8 @@ local function printHelp()
 	print("  /wf compass        - toggle the HUD compass")
 	print("  /wf quests         - toggle showing quest objectives")
 	print("  /wf party          - toggle showing party member positions")
-	print("  /wf flightpaths    - toggle showing flight masters")
-	print("  (bank & auction house record themselves automatically the moment anyone in your party opens one)")
-	print("  /wf poi add <name> - save any other custom POI at your current spot")
-	print("  /wf poi remove <name> - remove a saved custom POI on this map")
-	print("  /wf poi list       - list saved custom POIs on this map")
-	print("  /wf poi sync       - re-share everything you know with your current party")
-	print("  /wf style letter|icon - switch markers between colored letters and real icons where available")
-	print("  /wf color <category> <r> <g> <b> - set a marker color, 0-255 each")
-	print("      categories: waypointmine, waypointother, party, quest, flight, poi")
-	print("  /wf debug          - toggle diagnostic output for map pin placement")
 	print("  /wf facingcheck    - print the raw GetPlayerFacing() value, for calibrating the compass")
+	print("  /wf questcheck     - print exactly why quests are/aren't showing on the compass")
 end
 
 local function toggleOption(key, label)
@@ -153,6 +143,10 @@ SlashCmdList.WAYFINDER = function(msg)
 	elseif cmd == "flightpaths" or cmd == "flights" then
 		toggleOption("showFlightPaths", "flight masters")
 	elseif cmd == "poi" then
+			if not (PC.POI and PC.db.customPOIs) then
+				print("|cffff4444Wayfinder|r the custom-POI feature isn't enabled yet.")
+				return
+			end
 		local sub, arg = rest:match("^(%S*)%s*(.*)$")
 		sub = (sub or ""):lower()
 		if sub == "add" then
@@ -193,6 +187,8 @@ SlashCmdList.WAYFINDER = function(msg)
 		local raw = GetPlayerFacing() or 0
 		print(string.format("|cff33ff99Wayfinder|r GetPlayerFacing() = %.4f radians = %.1f degrees",
 			raw, raw * 180 / math.pi))
+	elseif cmd == "questcheck" then
+		if PC.Quests then PC.Quests.Debug() end
 	else
 		printHelp()
 	end
