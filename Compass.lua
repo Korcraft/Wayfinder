@@ -1,4 +1,4 @@
--- PartyCompass: Compass.lua
+-- Wayfinder: Compass.lua
 -- A top-of-screen heading strip, like an FPS compass: cardinal letters scroll
 -- past as you turn, and anything relevant on your CURRENT map shows up as an
 -- icon at its relative bearing -- your party's shared waypoints, live party
@@ -7,7 +7,7 @@
 -- standing on is hidden here (waypoints still show on the world map) --
 -- cross-zone "far away" arrows are a good follow-up feature once this works.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Compass = PC.Compass or {}
 local Compass = PC.Compass
 
@@ -19,8 +19,8 @@ local ticks = {}   -- minor/major tick marks between the labels, reused
 -- SetVertexColor tints them, same as any other icon here -- confirmed this
 -- client loads addon-bundled .png textures the same way Questie/Baganator
 -- do (Interface/AddOns/<name>/<path>).
-local WAYPOINT_TEXTURE_TEMP = "Interface/AddOns/PartyCompass/Textures/WaypointTemp.png"
-local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/PartyCompass/Textures/WaypointPermanent.png"
+local WAYPOINT_TEXTURE_TEMP = "Interface/AddOns/Wayfinder/Textures/WaypointTemp.png"
+local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/Wayfinder/Textures/WaypointPermanent.png"
 
 local CARDINALS = {
 	{ 0, "N" }, { 45, "NE" }, { 90, "E" }, { 135, "SE" },
@@ -226,7 +226,7 @@ function Compass.Refresh()
 	end
 end
 
--- CALIBRATED from /pc facingcheck: facing true north reads ~359.8/360
+-- CALIBRATED from /wf facingcheck: facing true north reads ~359.8/360
 -- degrees (i.e. ~0, no offset at the zero-point), which combined with the
 -- earlier SW-reported-as-NW result only fits a MIRROR (direction-reversed)
 -- relationship, not an offset -- GetPlayerFacing() increases
@@ -392,7 +392,7 @@ function Compass.Init()
 	-- the strip's middle -- their bottom edge sits 28px below center, which
 	-- didn't fit inside the old 44px-tall (+-22) frame and overhung the
 	-- background by ~6px. 64px (+-32) gives them room with a small margin.
-	frame = CreateFrame("Frame", "PartyCompassHUD", UIParent)
+	frame = CreateFrame("Frame", "WayfinderHUD", UIParent)
 	frame:SetSize(PC.db.options.compassWidth, 64)
 	frame:SetPoint("TOP", UIParent, "TOP", 0, -4)
 	frame:SetFrameStrata("LOW")
@@ -438,7 +438,7 @@ function Compass.Init()
 		local ok, err = pcall(updateCompass)
 		if not ok and not warnedUpdateError then
 			warnedUpdateError = true
-			print("|cffff4444PartyCompass|r compass update error (won't spam further): " .. tostring(err))
+			print("|cffff4444Wayfinder|r compass update error (won't spam further): " .. tostring(err))
 		end
 	end)
 

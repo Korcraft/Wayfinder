@@ -1,18 +1,18 @@
--- PartyCompass: Comm.lua
+-- Wayfinder: Comm.lua
 -- Party/raid addon-message networking. Other players only see your waypoints/pings
--- if they also have PartyCompass installed -- there is no API to draw on someone
+-- if they also have Wayfinder installed -- there is no API to draw on someone
 -- else's map without their own client rendering it locally.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Comm = PC.Comm or {}
 local Comm = PC.Comm
 
-local commFrame = CreateFrame("Frame", "PartyCompassCommFrame")
+local commFrame = CreateFrame("Frame", "WayfinderCommFrame")
 
 function Comm.Init()
 	local ok = pcall(C_ChatInfo.RegisterAddonMessagePrefix, PC.PREFIX)
 	if not ok then
-		print("|cffff4444PartyCompass|r could not register addon message prefix.")
+		print("|cffff4444Wayfinder|r could not register addon message prefix.")
 	end
 	commFrame:RegisterEvent("CHAT_MSG_ADDON")
 end

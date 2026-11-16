@@ -1,4 +1,4 @@
--- PartyCompass: Waypoints.lua
+-- Wayfinder: Waypoints.lua
 -- Multiple NAMED, ICONED waypoints per player -- not just a single "my
 -- waypoint" slot like the first version had. Each one is either:
 --   permanent ("P") -- stays until someone removes it, and is LOCAL ONLY --
@@ -11,7 +11,7 @@
 -- client, every waypoint you ever RECEIVE from someone else is necessarily
 -- temporary.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Waypoints = PC.Waypoints or {}
 local Waypoints = PC.Waypoints
 
@@ -82,7 +82,7 @@ local function colorForIndex(index)
 end
 
 -- Core waypoint-creation logic, usable both for "at my own current
--- position" (Waypoints.Add, /pc wp add) and "at wherever I just clicked on
+-- position" (Waypoints.Add, /wf wp add) and "at wherever I just clicked on
 -- the world map" (MapPins.lua's click handler). Always your own waypoint.
 -- Only TEMPORARY waypoints get broadcast to your party -- permanent ones
 -- stay purely local to you. Returns the created entry.
@@ -132,19 +132,19 @@ Waypoints.colorForIndex = colorForIndex
 -- purely local to you.
 function Waypoints.Add(name, iconNum, isTemp)
 	if not name or name:trim() == "" then
-		print("|cffff4444PartyCompass|r usage: /pc wp add <name>")
+		print("|cffff4444Wayfinder|r usage: /wf wp add <name>")
 		return
 	end
 	local uiMapID, position = hereAndNow()
 	if not uiMapID then
-		print("|cffff4444PartyCompass|r couldn't determine your position.")
+		print("|cffff4444Wayfinder|r couldn't determine your position.")
 		return
 	end
 	local entry = Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
 	if isTemp then
-		print(string.format("|cff33ff99PartyCompass|r temporary waypoint \"%s\" set (expires in 15 min) and shared with your party.", entry.name))
+		print(string.format("|cff33ff99Wayfinder|r temporary waypoint \"%s\" set (expires in 15 min) and shared with your party.", entry.name))
 	else
-		print(string.format("|cff33ff99PartyCompass|r permanent waypoint \"%s\" set (local to you only).", entry.name))
+		print(string.format("|cff33ff99Wayfinder|r permanent waypoint \"%s\" set (local to you only).", entry.name))
 	end
 end
 
@@ -153,7 +153,7 @@ function Waypoints.Remove(name)
 	local owner = myFullName()
 	local list = PC.db.waypoints[owner]
 	if not list then
-		print("|cffff4444PartyCompass|r you have no waypoints to remove.")
+		print("|cffff4444Wayfinder|r you have no waypoints to remove.")
 		return
 	end
 	for id, entry in pairs(list) do
@@ -164,11 +164,11 @@ function Waypoints.Remove(name)
 			end
 			if PC.MapPins then PC.MapPins.Refresh() end
 			if PC.Compass then PC.Compass.Refresh() end
-			print("|cff33ff99PartyCompass|r waypoint \"" .. name .. "\" removed.")
+			print("|cff33ff99Wayfinder|r waypoint \"" .. name .. "\" removed.")
 			return
 		end
 	end
-	print("|cffff4444PartyCompass|r you have no waypoint named \"" .. tostring(name) .. "\".")
+	print("|cffff4444Wayfinder|r you have no waypoint named \"" .. tostring(name) .. "\".")
 end
 
 -- Removes ALL of your own waypoints at once (handy for clearing out test
@@ -177,7 +177,7 @@ function Waypoints.ClearAll()
 	local owner = myFullName()
 	local list = PC.db.waypoints[owner]
 	if not list or not next(list) then
-		print("|cff33ff99PartyCompass|r you have no waypoints to clear.")
+		print("|cff33ff99Wayfinder|r you have no waypoints to clear.")
 		return
 	end
 	local count = 0
@@ -190,7 +190,7 @@ function Waypoints.ClearAll()
 	end
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print(string.format("|cff33ff99PartyCompass|r cleared %d of your waypoint(s).", count))
+	print(string.format("|cff33ff99Wayfinder|r cleared %d of your waypoint(s).", count))
 end
 
 -- Wipes EVERY waypoint in your saved data, including ones received from
@@ -209,7 +209,7 @@ function Waypoints.WipeAll()
 	end
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print(string.format("|cff33ff99PartyCompass|r wiped %d waypoint(s) total (yours and any received).", count))
+	print(string.format("|cff33ff99Wayfinder|r wiped %d waypoint(s) total (yours and any received).", count))
 end
 
 -- Renames one of YOUR OWN waypoints by id (used by double-clicking a
@@ -224,7 +224,7 @@ function Waypoints.Rename(id, newName)
 	entry.name = newName
 	if PC.MapPins then PC.MapPins.Refresh() end
 	if PC.Compass then PC.Compass.Refresh() end
-	print("|cff33ff99PartyCompass|r waypoint renamed to \"" .. newName .. "\".")
+	print("|cff33ff99Wayfinder|r waypoint renamed to \"" .. newName .. "\".")
 end
 
 -- "Close enough to what you clicked" tolerance for removing a waypoint by
@@ -234,7 +234,7 @@ local REMOVE_CLICK_RADIUS = 0.04
 -- Finds whichever of YOUR OWN waypoints on this map is nearest (x,y) --
 -- used by shift-clicking the world map -- WITHOUT removing it yet, so the
 -- caller can decide (e.g. confirm before deleting a permanent one). Only
--- ever considers your own; same scope as the name-based /pc wp remove.
+-- ever considers your own; same scope as the name-based /wf wp remove.
 -- Returns id, entry or nil if nothing is close enough.
 function Waypoints.FindNearest(uiMapID, x, y)
 	local owner = myFullName()
@@ -366,7 +366,7 @@ pruneFrame:SetScript("OnEvent", Waypoints.PruneDepartedMembers)
 function Waypoints.PrintAll()
 	local list = Waypoints.GetAll()
 	if #list == 0 then
-		print("|cff33ff99PartyCompass|r no active waypoints.")
+		print("|cff33ff99Wayfinder|r no active waypoints.")
 		return
 	end
 	local now = time()
@@ -376,7 +376,7 @@ function Waypoints.PrintAll()
 		local status = (wp.kind == "T")
 			and string.format("[temp, %dm left]", math.max(0, math.floor((wp.expires - now) / 60)))
 			or "[permanent]"
-		print(string.format("|cff33ff99PartyCompass|r %s%s \"%s\" %s - %s (%.0f, %.0f)",
+		print(string.format("|cff33ff99Wayfinder|r %s%s \"%s\" %s - %s (%.0f, %.0f)",
 			wp.mine and "[You] " or "", wp.owner, wp.name, status, mapName,
 			wp.position.x * 100, wp.position.y * 100))
 	end

@@ -1,4 +1,4 @@
--- PartyCompass: Quests.lua
+-- Wayfinder: Quests.lua
 -- Surfaces objective-waypoint locations for quests in your log, for the
 -- quests Blizzard actually attached waypoint data to.
 --
@@ -18,7 +18,7 @@
 -- Only quests you're actively tracking get a number, same as the tracker;
 -- anything else falls back to the generic "Q" swatch.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Quests = PC.Quests or {}
 local Quests = PC.Quests
 
@@ -51,7 +51,7 @@ function Quests.GetAll()
 		-- out loud, instead of just showing nothing forever with no clue why.
 		if not warnedMissingAPI then
 			warnedMissingAPI = true
-			print("|cffff4444PartyCompass|r C_QuestLog.GetNextWaypointForMap doesn't exist on this client -- quest objectives can't be shown on the compass.")
+			print("|cffff4444Wayfinder|r C_QuestLog.GetNextWaypointForMap doesn't exist on this client -- quest objectives can't be shown on the compass.")
 		end
 		return list
 	end

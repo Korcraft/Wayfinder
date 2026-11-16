@@ -1,4 +1,4 @@
--- PartyCompass: IconStyle.lua
+-- Wayfinder: IconStyle.lua
 -- Shared helper for the "icons" vs "letters" display option. Rather than
 -- hardcode guessed Blizzard texture file paths (several of which we couldn't
 -- verify exist in this client), this asks the game's own minimap "Find X"
@@ -6,7 +6,7 @@
 -- is actually found. Anything that doesn't resolve falls back to a colored
 -- letter swatch -- so "icon mode" never shows a broken/blank texture.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.IconStyle = PC.IconStyle or {}
 local IconStyle = PC.IconStyle
 

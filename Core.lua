@@ -1,12 +1,12 @@
--- PartyCompass: Core.lua
+-- Wayfinder: Core.lua
 -- Addon bootstrap: shared namespace, saved variables, slash commands, event wiring.
 
-PartyCompass = PartyCompass or {}
-local PC = PartyCompass
+Wayfinder = Wayfinder or {}
+local PC = Wayfinder
 
 PC.PREFIX = "PCOMPASS1" -- addon message prefix, must be <= 16 chars, same on every client
 
--- Default saved-variable shape. Each module reads/writes PartyCompassDB directly.
+-- Default saved-variable shape. Each module reads/writes WayfinderDB directly.
 local DEFAULTS = {
 	waypoints = {},   -- [playerFullName] = { [id] = { id, name, colorIndex, uiMapID, position={x,y}, kind, expires, mine } }
 	options = {
@@ -51,15 +51,15 @@ local function applyDefaults(db, defaults)
 	end
 end
 
-local eventFrame = CreateFrame("Frame", "PartyCompassEventFrame")
+local eventFrame = CreateFrame("Frame", "WayfinderEventFrame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
-	if event == "ADDON_LOADED" and addonName == "PartyCompass" then
-		PartyCompassDB = PartyCompassDB or {}
-		applyDefaults(PartyCompassDB, DEFAULTS)
-		PC.db = PartyCompassDB
+	if event == "ADDON_LOADED" and addonName == "Wayfinder" then
+		WayfinderDB = WayfinderDB or {}
+		applyDefaults(WayfinderDB, DEFAULTS)
+		PC.db = WayfinderDB
 
 		if PC.Comm and PC.Comm.Init then PC.Comm.Init() end
 	elseif event == "PLAYER_LOGIN" then
@@ -72,7 +72,7 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
 		if PC.MapPins and PC.MapPins.Init then PC.MapPins.Init() end
 		if PC.Compass and PC.Compass.Init then PC.Compass.Init() end
 		if PC.Settings and PC.Settings.Init then PC.Settings.Init() end
-		print("|cff33ff99PartyCompass|r loaded. Type |cffffffff/pc help|r for commands.")
+		print("|cff33ff99Wayfinder|r loaded. Type |cffffffff/wf help|r for commands.")
 	end
 end)
 
@@ -81,41 +81,41 @@ end)
 -- ---------------------------------------------------------------------------
 
 local function printHelp()
-	print("|cff33ff99PartyCompass|r commands:")
+	print("|cff33ff99Wayfinder|r commands:")
 	print("  On the world map right now: Double-click = temp waypoint (~15 min, shared, color-coded)")
 	print("                              Alt+click = permanent waypoint (local only)")
 	print("                              Shift+click = remove nearest of yours (confirms first if permanent)")
 	print("                              Right-click is untouched -- that's still the map's native zoom-out")
 	print("  (ping is shelved for now while this is being tested)")
-	print("  /pc wp temp <name>            - add a waypoint at your current position")
-	print("  /pc wp remove <name>          - remove one of YOUR waypoints by name")
-	print("  /pc wp clear                  - remove ALL of your own waypoints at once (clears test clutter)")
-	print("  /pc wp wipeall                - nuke EVERY waypoint, including any received from party (full reset)")
-	print("  /pc wp list  (or /pc list)    - list every active waypoint, yours and your party's")
-	print("  /pc settings       - open the PartyCompass settings panel (also under Options > AddOns)")
-	print("  /pc compass        - toggle the HUD compass")
-	print("  /pc quests         - toggle showing quest objectives")
-	print("  /pc party          - toggle showing party member positions")
-	print("  /pc flightpaths    - toggle showing flight masters")
+	print("  /wf wp temp <name>            - add a waypoint at your current position")
+	print("  /wf wp remove <name>          - remove one of YOUR waypoints by name")
+	print("  /wf wp clear                  - remove ALL of your own waypoints at once (clears test clutter)")
+	print("  /wf wp wipeall                - nuke EVERY waypoint, including any received from party (full reset)")
+	print("  /wf wp list  (or /wf list)    - list every active waypoint, yours and your party's")
+	print("  /wf settings       - open the Wayfinder settings panel (also under Options > AddOns)")
+	print("  /wf compass        - toggle the HUD compass")
+	print("  /wf quests         - toggle showing quest objectives")
+	print("  /wf party          - toggle showing party member positions")
+	print("  /wf flightpaths    - toggle showing flight masters")
 	print("  (bank & auction house record themselves automatically the moment anyone in your party opens one)")
-	print("  /pc poi add <name> - save any other custom POI at your current spot")
-	print("  /pc poi remove <name> - remove a saved custom POI on this map")
-	print("  /pc poi list       - list saved custom POIs on this map")
-	print("  /pc poi sync       - re-share everything you know with your current party")
-	print("  /pc style letter|icon - switch markers between colored letters and real icons where available")
-	print("  /pc color <category> <r> <g> <b> - set a marker color, 0-255 each")
+	print("  /wf poi add <name> - save any other custom POI at your current spot")
+	print("  /wf poi remove <name> - remove a saved custom POI on this map")
+	print("  /wf poi list       - list saved custom POIs on this map")
+	print("  /wf poi sync       - re-share everything you know with your current party")
+	print("  /wf style letter|icon - switch markers between colored letters and real icons where available")
+	print("  /wf color <category> <r> <g> <b> - set a marker color, 0-255 each")
 	print("      categories: waypointmine, waypointother, party, quest, flight, poi")
-	print("  /pc debug          - toggle diagnostic output for map pin placement")
-	print("  /pc facingcheck    - print the raw GetPlayerFacing() value, for calibrating the compass")
+	print("  /wf debug          - toggle diagnostic output for map pin placement")
+	print("  /wf facingcheck    - print the raw GetPlayerFacing() value, for calibrating the compass")
 end
 
 local function toggleOption(key, label)
 	PC.db.options[key] = not PC.db.options[key]
-	print("|cff33ff99PartyCompass|r " .. label .. " " .. (PC.db.options[key] and "enabled" or "disabled"))
+	print("|cff33ff99Wayfinder|r " .. label .. " " .. (PC.db.options[key] and "enabled" or "disabled"))
 end
 
-SLASH_PARTYCOMPASS1 = "/pc"
-SlashCmdList.PARTYCOMPASS = function(msg)
+SLASH_WAYFINDER1 = "/wf"
+SlashCmdList.WAYFINDER = function(msg)
 	msg = (msg or ""):trim()
 	local cmd, rest = msg:match("^(%S*)%s*(.*)$")
 	cmd = (cmd or ""):lower()
@@ -145,7 +145,7 @@ SlashCmdList.PARTYCOMPASS = function(msg)
 	elseif cmd == "compass" then
 		PC.db.options.compassEnabled = not PC.db.options.compassEnabled
 		if PC.Compass then PC.Compass.Refresh() end
-		print("|cff33ff99PartyCompass|r compass " .. (PC.db.options.compassEnabled and "enabled" or "disabled"))
+		print("|cff33ff99Wayfinder|r compass " .. (PC.db.options.compassEnabled and "enabled" or "disabled"))
 	elseif cmd == "quests" then
 		toggleOption("showQuests", "quest objectives")
 	elseif cmd == "party" then
@@ -170,28 +170,28 @@ SlashCmdList.PARTYCOMPASS = function(msg)
 		local style = rest:lower()
 		if style == "letter" or style == "icon" then
 			PC.db.options.iconStyle = style
-			print("|cff33ff99PartyCompass|r marker style set to " .. style .. ".")
+			print("|cff33ff99Wayfinder|r marker style set to " .. style .. ".")
 		else
-			print("|cffff4444PartyCompass|r usage: /pc style letter|icon")
+			print("|cffff4444Wayfinder|r usage: /wf style letter|icon")
 		end
 	elseif cmd == "debug" then
 		PC.db.debugPins = not PC.db.debugPins
-		print("|cff33ff99PartyCompass|r pin placement debug output " .. (PC.db.debugPins and "ON" or "off") .. " -- place a waypoint on the map to see it.")
+		print("|cff33ff99Wayfinder|r pin placement debug output " .. (PC.db.debugPins and "ON" or "off") .. " -- place a waypoint on the map to see it.")
 	elseif cmd == "color" then
 		local category, r, g, b = rest:match("^(%S*)%s+(%d+)%s+(%d+)%s+(%d+)")
 		category = (category or ""):lower()
 		if category ~= "" and PC.db.options.colors[category] and r then
 			PC.db.options.colors[category] = { tonumber(r) / 255, tonumber(g) / 255, tonumber(b) / 255 }
-			print("|cff33ff99PartyCompass|r " .. category .. " color updated.")
+			print("|cff33ff99Wayfinder|r " .. category .. " color updated.")
 		else
-			print("|cffff4444PartyCompass|r usage: /pc color <category> <r> <g> <b>  (0-255 each)")
+			print("|cffff4444Wayfinder|r usage: /wf color <category> <r> <g> <b>  (0-255 each)")
 			print("      categories: waypointmine, waypointother, party, quest, flight, poi")
 		end
 	elseif cmd == "settings" then
 		if PC.Settings then PC.Settings.Open() end
 	elseif cmd == "facingcheck" then
 		local raw = GetPlayerFacing() or 0
-		print(string.format("|cff33ff99PartyCompass|r GetPlayerFacing() = %.4f radians = %.1f degrees",
+		print(string.format("|cff33ff99Wayfinder|r GetPlayerFacing() = %.4f radians = %.1f degrees",
 			raw, raw * 180 / math.pi))
 	else
 		printHelp()

@@ -1,4 +1,4 @@
--- PartyCompass: Pings.lua
+-- Wayfinder: Pings.lua
 -- Quick, non-persistent "look here" markers (MOBA-style), separate from the
 -- persistent shared waypoints in Waypoints.lua. A ping just flashes on the
 -- map for a few seconds and then disappears -- nothing is saved.
@@ -7,7 +7,7 @@
 -- Compass.lua for the HUD strip) -- this file just owns the data: which
 -- pings are currently active, and expiring them after PING_LIFETIME.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Pings = PC.Pings or {}
 local Pings = PC.Pings
 
@@ -61,7 +61,7 @@ function Pings.Add(who, point)
 		who = who,
 		expires = GetTime() + PING_LIFETIME,
 	}
-	print(string.format("|cff33ff99PartyCompass|r %s pinged the map.", who))
+	print(string.format("|cff33ff99Wayfinder|r %s pinged the map.", who))
 	if PC.MapPins then PC.MapPins.Refresh() end
 end
 

@@ -1,4 +1,4 @@
--- PartyCompass: MapPins.lua
+-- Wayfinder: MapPins.lua
 -- Our own waypoint pin on the real Blizzard world map.
 --
 -- ROOT CAUSE FOUND via a real test, not another guess: a frame parented to
@@ -24,13 +24,13 @@
 -- that we draw our own pin, we don't touch that system at all, so there's
 -- nothing left to conflict with.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.MapPins = PC.MapPins or {}
 local MapPins = PC.MapPins
 
 -- Same icon constants as Compass.lua -- see the note there.
-local WAYPOINT_TEXTURE_TEMP = "Interface/AddOns/PartyCompass/Textures/WaypointTemp.png"
-local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/PartyCompass/Textures/WaypointPermanent.png"
+local WAYPOINT_TEXTURE_TEMP = "Interface/AddOns/Wayfinder/Textures/WaypointTemp.png"
+local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/Wayfinder/Textures/WaypointPermanent.png"
 
 -- ---------------------------------------------------------------------------
 -- Rename dialog for permanent waypoints' name tags (double-click to open).
@@ -48,7 +48,7 @@ local renameDialog
 
 local function getRenameDialog()
 	if renameDialog then return renameDialog end
-	local f = CreateFrame("Frame", "PartyCompassRenameDialog", UIParent)
+	local f = CreateFrame("Frame", "WayfinderRenameDialog", UIParent)
 	f:SetSize(260, 100)
 	f:SetPoint("CENTER")
 	f:SetFrameStrata("DIALOG")
@@ -132,7 +132,7 @@ end
 -- (confirmed real, used this exact way by Questie's own click code).
 -- ---------------------------------------------------------------------------
 
-StaticPopupDialogs["PARTYCOMPASS_DELETE_PERMANENT"] = {
+StaticPopupDialogs["WAYFINDER_DELETE_PERMANENT"] = {
 	text = "Delete permanent waypoint \"%s\"?",
 	button1 = "Yes",
 	button2 = "Cancel",
@@ -174,7 +174,7 @@ local function handleMapClick(button)
 		local id, entry = PC.Waypoints.FindNearest(mapID, nx, ny)
 		if not id then return end
 		if entry.kind == "P" then
-			StaticPopup_Show("PARTYCOMPASS_DELETE_PERMANENT", entry.name, nil, id)
+			StaticPopup_Show("WAYFINDER_DELETE_PERMANENT", entry.name, nil, id)
 		else
 			PC.Waypoints.RemoveByID(id)
 		end
@@ -446,7 +446,7 @@ function MapPins.Init()
 		local ok, err = pcall(MapPins.Refresh)
 		if not ok and not warnedRefreshError then
 			warnedRefreshError = true
-			print("|cffff4444PartyCompass|r map pin update error (won't spam further): " .. tostring(err))
+			print("|cffff4444Wayfinder|r map pin update error (won't spam further): " .. tostring(err))
 		end
 	end
 

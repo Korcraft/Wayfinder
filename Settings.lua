@@ -1,5 +1,5 @@
--- PartyCompass: Settings.lua
--- Real settings panel under Options > AddOns > PartyCompass, built with
+-- Wayfinder: Settings.lua
+-- Real settings panel under Options > AddOns > Wayfinder, built with
 -- Blizzard's own checkbox template (UICheckButtonTemplate) and registered
 -- through the modern Settings API -- Settings.RegisterCanvasLayoutCategory
 -- / Settings.RegisterAddOnCategory / Settings.OpenToCategory are confirmed
@@ -7,7 +7,7 @@
 -- ProfitCraft, Syndicator). The older InterfaceOptions_AddCategory is
 -- deprecated and intentionally not used here.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.Settings = PC.Settings or {}
 local ModuleSettings = PC.Settings
 
@@ -186,7 +186,7 @@ end
 local function BuildPage(canvas)
 	local title = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
 	title:SetPoint("TOPLEFT", 16, -16)
-	title:SetText("PartyCompass")
+	title:SetText("Wayfinder")
 
 	for i, option in ipairs(OPTIONS) do
 		checkboxes[option] = BuildCheckbox(canvas, option, 16, -52 - (i - 1) * ROW_SPACING)
@@ -220,7 +220,7 @@ function ModuleSettings.Init()
 	local canvas = CreateFrame("Frame", nil, UIParent)
 	canvas:Hide()
 	BuildPage(canvas)
-	category = Settings.RegisterCanvasLayoutCategory(canvas, "PartyCompass")
+	category = Settings.RegisterCanvasLayoutCategory(canvas, "Wayfinder")
 	Settings.RegisterAddOnCategory(category)
 end
 
@@ -228,6 +228,6 @@ function ModuleSettings.Open()
 	if category and Settings and Settings.OpenToCategory then
 		Settings.OpenToCategory(category:GetID())
 	else
-		print("|cffff4444PartyCompass|r settings panel isn't available on this client.")
+		print("|cffff4444Wayfinder|r settings panel isn't available on this client.")
 	end
 end

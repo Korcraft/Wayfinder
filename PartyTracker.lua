@@ -1,4 +1,4 @@
--- PartyCompass: PartyTracker.lua
+-- Wayfinder: PartyTracker.lua
 -- Live positions of your current party/raid members, read straight from the
 -- client -- no addon-message networking needed for this part. C_Map will
 -- report a position for any group member it can resolve, the same technique
@@ -17,7 +17,7 @@
 -- members to the compass's edge instead of hiding them, so they're still
 -- visibly present as you asked, just without a direction.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.PartyTracker = PC.PartyTracker or {}
 local PartyTracker = PC.PartyTracker
 

@@ -1,4 +1,4 @@
--- PartyCompass: POI.lua
+-- Wayfinder: POI.lua
 -- Three different kinds of "points of interest":
 --
 --  1. Flight masters -- read live from C_TaxiMap, always accurate, zero
@@ -17,15 +17,15 @@
 --     hearthstone (every innkeeper's does; nothing else does). Either way,
 --     just playing normally -- no slash command needed -- captures your
 --     position and shares it with your party.
---  3. Anything else custom -- same idea as #2 but manual, via /pc poi add
+--  3. Anything else custom -- same idea as #2 but manual, via /wf poi add
 --     <name>, for any other spot worth marking.
 --
 -- Either way, only the FIRST person in the party to ever visit a given
 -- bank/AH/spot has to trigger the recording; everyone else just sees it
 -- show up. Anyone who joins later and missed that can ask for a re-send
--- with /pc poi sync.
+-- with /wf poi sync.
 
-local PC = PartyCompass
+local PC = Wayfinder
 PC.POI = PC.POI or {}
 local POI = PC.POI
 
@@ -89,7 +89,7 @@ local function autoRecord(label)
 			label, uiMapID, position.x, position.y, added and "added+broadcast" or "already known nearby, skipped"))
 	end
 	if added then
-		print("|cff33ff99PartyCompass|r auto-recorded \"" .. label .. "\" here and shared it with your party.")
+		print("|cff33ff99Wayfinder|r auto-recorded \"" .. label .. "\" here and shared it with your party.")
 	end
 end
 
@@ -144,18 +144,18 @@ end
 -- Manual recording for anything else worth marking.
 function POI.Add(name)
 	if not name or name:trim() == "" then
-		print("|cffff4444PartyCompass|r usage: /pc poi add <name>")
+		print("|cffff4444Wayfinder|r usage: /wf poi add <name>")
 		return
 	end
 	local uiMapID, position = hereAndNow()
 	if not uiMapID then
-		print("|cffff4444PartyCompass|r couldn't determine your position.")
+		print("|cffff4444Wayfinder|r couldn't determine your position.")
 		return
 	end
 	if addIfNew(uiMapID, name, position) then
-		print("|cff33ff99PartyCompass|r saved POI \"" .. name .. "\" at your current spot and shared it with your party.")
+		print("|cff33ff99Wayfinder|r saved POI \"" .. name .. "\" at your current spot and shared it with your party.")
 	else
-		print("|cffff4444PartyCompass|r \"" .. name .. "\" is already saved on this map.")
+		print("|cffff4444Wayfinder|r \"" .. name .. "\" is already saved on this map.")
 	end
 end
 
@@ -176,7 +176,7 @@ end
 
 -- Re-broadcasts everything you personally know about, across every map --
 -- useful right after someone new joins the party and missed earlier
--- auto-recordings or /pc poi add calls. Fires one addon message per saved
+-- auto-recordings or /wf poi add calls. Fires one addon message per saved
 -- POI with no throttling; fine for the handful of spots you'd realistically
 -- have, but if this list ever grows into the hundreds, space these out
 -- (e.g. via ChatThrottleLib, which Details already ships locally) rather
@@ -189,7 +189,7 @@ function POI.BroadcastAllMine()
 			sent = sent + 1
 		end
 	end
-	print("|cff33ff99PartyCompass|r re-synced " .. sent .. " custom POI(s) to your party.")
+	print("|cff33ff99Wayfinder|r re-synced " .. sent .. " custom POI(s) to your party.")
 end
 
 -- NOTE: with mailboxes (or anything else) having several same-named entries
@@ -201,28 +201,28 @@ function POI.Remove(name)
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	local list = uiMapID and PC.db.customPOIs[uiMapID]
 	if not list then
-		print("|cffff4444PartyCompass|r no custom POIs saved on this map.")
+		print("|cffff4444Wayfinder|r no custom POIs saved on this map.")
 		return
 	end
 	for i = #list, 1, -1 do
 		if list[i].name:lower() == (name or ""):lower() then
 			table.remove(list, i)
-			print("|cff33ff99PartyCompass|r removed POI \"" .. name .. "\".")
+			print("|cff33ff99Wayfinder|r removed POI \"" .. name .. "\".")
 			return
 		end
 	end
-	print("|cffff4444PartyCompass|r no POI named \"" .. tostring(name) .. "\" on this map.")
+	print("|cffff4444Wayfinder|r no POI named \"" .. tostring(name) .. "\" on this map.")
 end
 
 function POI.ListMine()
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	local list = uiMapID and PC.db.customPOIs[uiMapID]
 	if not list or #list == 0 then
-		print("|cff33ff99PartyCompass|r no custom POIs saved on this map.")
+		print("|cff33ff99Wayfinder|r no custom POIs saved on this map.")
 		return
 	end
 	for _, p in ipairs(list) do
-		print(string.format("|cff33ff99PartyCompass|r %s (%.0f, %.0f)", p.name, p.position.x * 100, p.position.y * 100))
+		print(string.format("|cff33ff99Wayfinder|r %s (%.0f, %.0f)", p.name, p.position.x * 100, p.position.y * 100))
 	end
 end
 
