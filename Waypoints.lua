@@ -43,20 +43,15 @@ function Waypoints.Init() end
 
 -- Both waypoint kinds render at the same size now (permanent used to be
 -- drawn bigger as the "bolder" treatment, but that's gone now that they're
--- the same height) -- adjustable via a small/medium/large setting instead
--- of a fixed pixel size. The compass and the map each get their own
--- independent size setting.
-local BASE_ICON_SIZE = 20
-local SIZE_MULTIPLIERS = { small = 0.75, medium = 1.0, large = 1.35 }
-
+-- the same height) -- a direct pixel size now (slider in settings) instead
+-- of a small/medium/large pick. The compass and the map each get their
+-- own independent size setting.
 function Waypoints.CompassIconSize()
-	local mult = SIZE_MULTIPLIERS[PC.db.options.compassIconSize] or 1.0
-	return BASE_ICON_SIZE * mult
+	return PC.db.options.compassIconSize or 20
 end
 
 function Waypoints.MapIconSize()
-	local mult = SIZE_MULTIPLIERS[PC.db.options.mapIconSize] or 1.0
-	return BASE_ICON_SIZE * mult
+	return PC.db.options.mapIconSize or 20
 end
 
 local function myFullName()

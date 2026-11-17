@@ -14,8 +14,8 @@ local DEFAULTS = {
 		compassWidth = 420,
 		compassHeight = 64,
 		fieldOfView = 180, -- degrees of heading shown across the compass strip
-		compassIconSize = "medium", -- "small", "medium", or "large" -- waypoint icon size on the compass HUD
-		mapIconSize = "medium", -- "small", "medium", or "large" -- waypoint icon size on the world map
+		compassIconSize = 20, -- pixels -- waypoint icon size on the compass HUD
+		mapIconSize = 20, -- pixels -- waypoint icon size on the world map
 		showQuests = true,
 		showParty = true,
 		showFlightPaths = true,
@@ -57,10 +57,26 @@ local eventFrame = CreateFrame("Frame", "WayfinderEventFrame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 
+-- v1.1.0 changed compassIconSize/mapIconSize from a "small"/"medium"/"large"
+-- string to a direct pixel number. applyDefaults only fills in MISSING
+-- keys, so anyone upgrading still has the old string sitting there -- left
+-- alone, that string gets handed straight to icon:SetSize() and errors.
+-- Converts it once, using the old multipliers against the old base size,
+-- so an upgrade doesn't silently change anyone's chosen size.
+local OLD_SIZE_PIXELS = { small = 15, medium = 20, large = 27 }
+local function migrateIconSizeSettings(options)
+	for _, key in ipairs({ "compassIconSize", "mapIconSize" }) do
+		if type(options[key]) == "string" then
+			options[key] = OLD_SIZE_PIXELS[options[key]] or 20
+		end
+	end
+end
+
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
 	if event == "ADDON_LOADED" and addonName == "Wayfinder" then
 		WayfinderDB = WayfinderDB or {}
 		applyDefaults(WayfinderDB, DEFAULTS)
+		migrateIconSizeSettings(WayfinderDB.options)
 		PC.db = WayfinderDB
 
 		if PC.Comm and PC.Comm.Init then PC.Comm.Init() end

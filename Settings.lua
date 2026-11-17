@@ -35,26 +35,16 @@ local SLIDERS = {
 	{ key = "hudOpacity", label = "Compass HUD background opacity", min = 0, max = 1, steps = 20 },
 	{ key = "compassWidth", label = "Compass width", min = 250, max = 700, steps = 45, round = true },
 	{ key = "compassHeight", label = "Compass height", min = 48, max = 120, steps = 18, round = true },
-}
-
-local ICON_SIZES = {
-	{ value = "small", label = "Small" },
-	{ value = "medium", label = "Medium" },
-	{ value = "large", label = "Large" },
-}
-
--- Two independent radio groups -- the compass HUD and the world map each
--- get their own waypoint icon size now, instead of one shared setting.
-local ICON_SIZE_GROUPS = {
-	{ key = "compassIconSize", label = "Compass waypoint icon size" },
-	{ key = "mapIconSize", label = "Map waypoint icon size" },
+	-- The compass HUD and the world map each get their own waypoint icon
+	-- size slider now, instead of a shared small/medium/large pick.
+	{ key = "compassIconSize", label = "Compass waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "mapIconSize", label = "Map waypoint icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
 local ROW_SPACING = 30
 local checkboxes = {}
 local colorSwatches = {}
 local sliderSyncs = {}
-local iconSizeBoxes = {} -- [groupKey][sizeValue] = checkbox
 local category
 
 local function GetValue(option)
@@ -160,50 +150,6 @@ local function BuildCheckbox(canvas, option, x, y)
 	return box
 end
 
-local function SyncIconSizeBoxes()
-	for _, group in ipairs(ICON_SIZE_GROUPS) do
-		local current = PC.db.options[group.key]
-		local boxes = iconSizeBoxes[group.key]
-		if boxes then
-			for _, entry in ipairs(ICON_SIZES) do
-				boxes[entry.value]:SetChecked(entry.value == current)
-			end
-		end
-	end
-end
-
--- Three checkboxes acting as a mutually-exclusive radio group (picking one
--- unchecks the others) -- built from the same plain UICheckButtonTemplate
--- as everything else here rather than reaching for a dropdown widget, so
--- there's nothing new to verify. One of these is built per entry in
--- ICON_SIZE_GROUPS (compass, map), each independent of the other.
-local function BuildIconSizeRow(canvas, group, x, y)
-	local label = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	label:SetPoint("TOPLEFT", x, y)
-	label:SetText(group.label)
-
-	iconSizeBoxes[group.key] = iconSizeBoxes[group.key] or {}
-	for i, entry in ipairs(ICON_SIZES) do
-		local box = CreateFrame("CheckButton", nil, canvas, "UICheckButtonTemplate")
-		box:SetPoint("TOPLEFT", x + 8, y - 20 - (i - 1) * 24)
-		box.Text:SetText(entry.label)
-		box.Text:SetFontObject("GameFontHighlight")
-		box:SetScript("OnClick", function(self)
-			if self:GetChecked() then
-				PC.db.options[group.key] = entry.value
-				SyncIconSizeBoxes()
-				if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
-				if PC.MapPins and PC.MapPins.Refresh then PC.MapPins.Refresh() end
-			else
-				-- Don't allow unchecking the active size directly -- one
-				-- of the three must always be selected.
-				self:SetChecked(true)
-			end
-		end)
-		iconSizeBoxes[group.key][entry.value] = box
-	end
-end
-
 -- The page had grown past the fixed height Blizzard gives a canvas
 -- category (no scrollbar, content just ran off the bottom) -- so the
 -- title stays fixed on the canvas, and everything else lives in a
@@ -246,22 +192,12 @@ local function BuildPage(canvas)
 		y = y - ROW_SPACING * 2
 	end
 
-	-- Each icon-size group takes a label row plus 3 checkbox rows (20 + 3*24),
-	-- with a 10px gap before the next group.
-	local ICON_SIZE_GROUP_HEIGHT = 20 + 3 * 24 + 10
-	y = y - 10
-	for i, group in ipairs(ICON_SIZE_GROUPS) do
-		BuildIconSizeRow(content, group, 16, y)
-		y = y - ICON_SIZE_GROUP_HEIGHT
-	end
-
 	content:SetHeight(-y + 16)
 
 	canvas:SetScript("OnShow", function()
 		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end
 		for _, applyCurrent in pairs(colorSwatches) do applyCurrent() end
 		for _, applyCurrentSlider in pairs(sliderSyncs) do applyCurrentSlider() end
-		SyncIconSizeBoxes()
 	end)
 end
 
