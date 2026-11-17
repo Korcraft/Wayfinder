@@ -204,32 +204,58 @@ local function BuildIconSizeRow(canvas, group, x, y)
 	end
 end
 
+-- The page had grown past the fixed height Blizzard gives a canvas
+-- category (no scrollbar, content just ran off the bottom) -- so the
+-- title stays fixed on the canvas, and everything else lives in a
+-- UIPanelScrollFrameTemplate's scroll child instead. Confirmed real and
+-- used this exact way on this client (ForeverDungeonJournal); that same
+-- addon's own comment flags that the scrollbar CHILD FIELD NAME
+-- (scroll.ScrollBar vs scroll.scrollBar) differs on Forever builds, but
+-- that's only needed for restyling the scrollbar, not for scrolling
+-- itself to work, so it's not needed here.
 local function BuildPage(canvas)
 	local title = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
 	title:SetPoint("TOPLEFT", 16, -16)
 	title:SetText("Wayfinder")
 
+	local scroll = CreateFrame("ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -48)
+	scroll:SetPoint("BOTTOMRIGHT", canvas, "BOTTOMRIGHT", -27, 0)
+
+	local content = CreateFrame("Frame", nil, scroll)
+	content:SetPoint("TOPLEFT")
+	content:SetWidth(scroll:GetWidth())
+	scroll:SetScrollChild(content)
+	scroll:SetScript("OnSizeChanged", function(self) content:SetWidth(self:GetWidth()) end)
+
+	local y = -8
 	for i, option in ipairs(OPTIONS) do
-		checkboxes[option] = BuildCheckbox(canvas, option, 16, -52 - (i - 1) * ROW_SPACING)
+		checkboxes[option] = BuildCheckbox(content, option, 16, y)
+		y = y - ROW_SPACING
 	end
 
-	local colorRowY = -52 - #OPTIONS * ROW_SPACING - 10
+	y = y - 10
 	for i, option in ipairs(COLORS) do
-		BuildColorSwatch(canvas, option, 16, colorRowY - (i - 1) * ROW_SPACING)
+		BuildColorSwatch(content, option, 16, y)
+		y = y - ROW_SPACING
 	end
 
-	local sliderRowY = colorRowY - #COLORS * ROW_SPACING - 10
+	y = y - 10
 	for i, option in ipairs(SLIDERS) do
-		BuildSlider(canvas, option, 16, sliderRowY - (i - 1) * ROW_SPACING * 2)
+		BuildSlider(content, option, 16, y)
+		y = y - ROW_SPACING * 2
 	end
 
 	-- Each icon-size group takes a label row plus 3 checkbox rows (20 + 3*24),
 	-- with a 10px gap before the next group.
 	local ICON_SIZE_GROUP_HEIGHT = 20 + 3 * 24 + 10
-	local iconSizeRowY = sliderRowY - #SLIDERS * ROW_SPACING * 2 - 10
+	y = y - 10
 	for i, group in ipairs(ICON_SIZE_GROUPS) do
-		BuildIconSizeRow(canvas, group, 16, iconSizeRowY - (i - 1) * ICON_SIZE_GROUP_HEIGHT)
+		BuildIconSizeRow(content, group, 16, y)
+		y = y - ICON_SIZE_GROUP_HEIGHT
 	end
+
+	content:SetHeight(-y + 16)
 
 	canvas:SetScript("OnShow", function()
 		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end
