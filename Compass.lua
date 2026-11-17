@@ -501,34 +501,28 @@ local function updateCompass()
 	if PC.db.options.showQuests then
 		renderBearingIcons(questPool, acquireQuest, throttled("quests", PC.Quests.GetAll), px, py, heading, width, fov, iconY,
 			function(icon, item)
-				-- The one FOCUSED (super-tracked) quest renders slightly
-				-- bigger and tinted orange-red -- no highlight square
-				-- anymore (tried that, didn't like it). icon.highlight
-				-- stays in the pool unused rather than removed, in case
-				-- it's wanted again later -- see makeQuestPool.
-				local tracked = item.focused
-				local baseSize = PC.db.options.compassQuestIconSize
-				local size = tracked and (baseSize + 4) or baseSize
+				-- Plain size/color regardless of focused state now -- the
+				-- FILTERING already does the work (see Quests.GetAll):
+				-- only tracked quests show at all, or just the one focused
+				-- quest if something's focused. No separate visual
+				-- treatment needed on top of that. icon.highlight stays in
+				-- the pool unused rather than removed, in case a visual
+				-- distinction is wanted again later -- see makeQuestPool.
+				local size = PC.db.options.compassQuestIconSize
 				icon:SetSize(size, size)
 				icon.highlight:Hide()
 
 				if item.completed then
 					-- Real Blizzard atlas for the yellow "?" turn-in marker
 					-- (confirmed real via Baganator's own working code on
-					-- this client, not guessed). Left white even when
-					-- focused -- tinting this well-known native symbol
-					-- risked making it harder to recognize.
+					-- this client, not guessed).
 					icon.bg:SetAtlas("QuestTurnin")
 					icon.bg:SetVertexColor(1, 1, 1, 1)
 					icon.label:SetText("")
 				else
 					icon.bg:SetAtlas(nil)
 					icon.bg:SetTexture(QUEST_TEXTURE)
-					if tracked then
-						icon.bg:SetVertexColor(1.0, 0.27, 0.0, 1) -- orange-red (CSS "orangered")
-					else
-						icon.bg:SetVertexColor(1, 1, 1, 1)
-					end
+					icon.bg:SetVertexColor(1, 1, 1, 1)
 					icon.label:SetText("")
 				end
 

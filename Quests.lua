@@ -18,15 +18,15 @@
 -- objective is in a different zone simply returns nil here -- no extra
 -- filtering needed.
 --
--- "Focused" means super-tracked -- Blizzard's own single-quest concept
--- (the one quest that gets the on-screen directional arrow/highlight in
--- the tracker), NOT "watched" -- GetNumQuestWatches/GetQuestIDForQuestWatchIndex
--- cover every quest shown in the tracker panel, which on this client
--- defaults to nearly your whole log, so using that for "the highlighted
--- one" ended up highlighting almost everything. C_SuperTrack.
--- GetSuperTrackedQuestID/IsSuperTrackingQuest/SetSuperTrackedQuestID are
--- confirmed real and used this exact way by QuestTogether on this client
--- (including passing questID 0 to clear it).
+-- Visibility rule (see GetAll): a quest only shows up here AT ALL if
+-- it's tracked/watched -- same set Blizzard's own tracker panel shows
+-- (GetNumQuestWatches/GetQuestIDForQuestWatchIndex). If something is
+-- FOCUSED (super-tracked -- Blizzard's own single-quest concept, the one
+-- that gets the on-screen directional arrow), that one quest is shown
+-- INSTEAD of the tracked set, ignoring tracked status entirely -- not
+-- alongside it. C_SuperTrack.GetSuperTrackedQuestID/IsSuperTrackingQuest/
+-- SetSuperTrackedQuestID are confirmed real and used this exact way by
+-- QuestTogether on this client (including passing questID 0 to clear it).
 
 local PC = Wayfinder
 PC.Quests = PC.Quests or {}
@@ -34,14 +34,39 @@ local Quests = PC.Quests
 
 function Quests.Init() end
 
-local function isFocused(questID)
+-- Returns the one focused (super-tracked) quest ID, or nil if none.
+local function getFocusedQuestID()
 	if not (C_SuperTrack and C_SuperTrack.IsSuperTrackingQuest and C_SuperTrack.GetSuperTrackedQuestID) then
-		return false
+		return nil
 	end
 	local ok, tracking = pcall(C_SuperTrack.IsSuperTrackingQuest)
-	if not ok or not tracking then return false end
+	if not ok or not tracking then return nil end
 	local ok2, focusedID = pcall(C_SuperTrack.GetSuperTrackedQuestID)
-	return ok2 and focusedID == questID
+	if ok2 then return focusedID end
+	return nil
+end
+
+local function isFocused(questID)
+	return getFocusedQuestID() == questID
+end
+
+-- Every currently tracked/watched quest ID (the same set Blizzard's own
+-- tracker panel shows) -- confirmed real via GetNumQuestWatches/
+-- GetQuestIDForQuestWatchIndex, already used this way elsewhere in this
+-- file. Used when nothing is focused, so quests only show up at all if
+-- they're being tracked.
+local function getWatchedQuestIDs()
+	local watched = {}
+	if not (C_QuestLog and C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex) then
+		return watched
+	end
+	local ok, count = pcall(C_QuestLog.GetNumQuestWatches)
+	if not ok or not count then return watched end
+	for i = 1, count do
+		local ok2, questID = pcall(C_QuestLog.GetQuestIDForQuestWatchIndex, i)
+		if ok2 and questID then watched[questID] = true end
+	end
+	return watched
 end
 
 -- Sets (or clears, if it's already the focused one) this quest as the
@@ -103,6 +128,8 @@ local function buildPOICache(uiMapID)
 	return cache
 end
 
+-- What should show: if a quest is focused, ONLY that one, ignoring
+-- tracked/watched status entirely. Otherwise, every tracked quest.
 function Quests.GetAll()
 	local list = {}
 	if not PC.db.options.showQuests then return list end
@@ -111,22 +138,29 @@ function Quests.GetAll()
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	if not uiMapID then return list end
 
+	local focusedQuestID = getFocusedQuestID()
+	local watchedIDs = not focusedQuestID and getWatchedQuestIDs() or nil
+
 	local poiCache = buildPOICache(uiMapID)
 	local numEntries = C_QuestLog.GetNumQuestLogEntries()
 	for i = 1, numEntries do
 		local info = C_QuestLog.GetInfo(i)
 		if info and not info.isHeader then
-			local x, y = findPosition(info.questID, uiMapID, poiCache)
-			if x and y then
-				local completeOk, completed = pcall(C_QuestLog.IsComplete, info.questID)
-				list[#list + 1] = {
-					questID = info.questID,
-					title = info.title,
-					focused = isFocused(info.questID),
-					completed = completeOk and completed or false,
-					uiMapID = uiMapID,
-					position = { x = x, y = y },
-				}
+			local shouldShow = focusedQuestID and info.questID == focusedQuestID
+				or (watchedIDs and watchedIDs[info.questID])
+			if shouldShow then
+				local x, y = findPosition(info.questID, uiMapID, poiCache)
+				if x and y then
+					local completeOk, completed = pcall(C_QuestLog.IsComplete, info.questID)
+					list[#list + 1] = {
+						questID = info.questID,
+						title = info.title,
+						focused = focusedQuestID ~= nil and info.questID == focusedQuestID,
+						completed = completeOk and completed or false,
+						uiMapID = uiMapID,
+						position = { x = x, y = y },
+					}
+				end
 			end
 		end
 	end
@@ -167,14 +201,21 @@ function Quests.Debug()
 	end
 	print("  quests on map (POI list): " .. tostring(poiCache and poiCount or "unavailable"))
 
+	local focusedQuestID = getFocusedQuestID()
+	print("  focused questID: " .. tostring(focusedQuestID))
+	local watchedIDs = not focusedQuestID and getWatchedQuestIDs() or nil
+
 	local numEntries = C_QuestLog.GetNumQuestLogEntries()
 	print("  quest log entries: " .. tostring(numEntries))
 
 	for i = 1, numEntries do
 		local info = C_QuestLog.GetInfo(i)
 		if info and not info.isHeader then
+			local shouldShow = focusedQuestID and info.questID == focusedQuestID
+				or (watchedIDs and watchedIDs[info.questID])
 			local x, y = findPosition(info.questID, uiMapID, poiCache)
-			print(string.format("  [%d] %s -- x=%s y=%s", info.questID, info.title, tostring(x), tostring(y)))
+			print(string.format("  [%d] %s -- shown=%s x=%s y=%s",
+				info.questID, info.title, tostring(shouldShow and true or false), tostring(x), tostring(y)))
 		end
 	end
 end
