@@ -18,11 +18,15 @@
 -- objective is in a different zone simply returns nil here -- no extra
 -- filtering needed.
 --
--- The number shown is the same one Blizzard's own quest tracker shows next
--- to each tracked quest (confirmed via GetNumQuestWatches/
--- GetQuestIndexForWatch, already used by addons installed on this client).
--- Only quests you're actively tracking get a number, same as the tracker;
--- anything else falls back to the generic "Q" swatch.
+-- "Focused" means super-tracked -- Blizzard's own single-quest concept
+-- (the one quest that gets the on-screen directional arrow/highlight in
+-- the tracker), NOT "watched" -- GetNumQuestWatches/GetQuestIDForQuestWatchIndex
+-- cover every quest shown in the tracker panel, which on this client
+-- defaults to nearly your whole log, so using that for "the highlighted
+-- one" ended up highlighting almost everything. C_SuperTrack.
+-- GetSuperTrackedQuestID/IsSuperTrackingQuest/SetSuperTrackedQuestID are
+-- confirmed real and used this exact way by QuestTogether on this client
+-- (including passing questID 0 to clear it).
 
 local PC = Wayfinder
 PC.Quests = PC.Quests or {}
@@ -30,27 +34,26 @@ local Quests = PC.Quests
 
 function Quests.Init() end
 
--- Returns the tracker slot number (1, 2, 3...) for this quest if it's
--- currently being watched/tracked, or nil if it isn't.
---
--- BUG FIX: this used to compare against the OLD global GetQuestIndexForWatch,
--- which returns a quest-LOG index (position in your log), not a quest ID --
--- confirmed from Questie's own compat-layer doc comment on this client
--- ("@return number? questLogIndex"). Comparing that against a real questID
--- (e.g. 95195) would essentially never match. C_QuestLog.GetQuestIDForQuestWatchIndex
--- is the real modern API and returns an actual quest ID, confirmed used the
--- same way by Questie's own compat layer here.
-local function trackerNumberFor(questID)
-	if not (C_QuestLog and C_QuestLog.GetNumQuestWatches and C_QuestLog.GetQuestIDForQuestWatchIndex) then return nil end
-	local ok, count = pcall(C_QuestLog.GetNumQuestWatches)
-	if not ok or not count then return nil end
-	for i = 1, count do
-		local ok2, watchedID = pcall(C_QuestLog.GetQuestIDForQuestWatchIndex, i)
-		if ok2 and watchedID == questID then
-			return i
-		end
+local function isFocused(questID)
+	if not (C_SuperTrack and C_SuperTrack.IsSuperTrackingQuest and C_SuperTrack.GetSuperTrackedQuestID) then
+		return false
 	end
-	return nil
+	local ok, tracking = pcall(C_SuperTrack.IsSuperTrackingQuest)
+	if not ok or not tracking then return false end
+	local ok2, focusedID = pcall(C_SuperTrack.GetSuperTrackedQuestID)
+	return ok2 and focusedID == questID
+end
+
+-- Sets (or clears, if it's already the focused one) this quest as the
+-- single highlighted/super-tracked quest. Used by right-clicking a quest
+-- icon on the compass -- see Compass.lua's makeQuestPool.
+function Quests.ToggleFocus(questID)
+	if not (C_SuperTrack and C_SuperTrack.SetSuperTrackedQuestID) then return end
+	if isFocused(questID) then
+		pcall(C_SuperTrack.SetSuperTrackedQuestID, 0)
+	else
+		pcall(C_SuperTrack.SetSuperTrackedQuestID, questID)
+	end
 end
 
 -- Three independent ways to find a quest's position on the CURRENT map, in
@@ -119,7 +122,7 @@ function Quests.GetAll()
 				list[#list + 1] = {
 					questID = info.questID,
 					title = info.title,
-					trackerNumber = trackerNumberFor(info.questID),
+					focused = isFocused(info.questID),
 					completed = completeOk and completed or false,
 					uiMapID = uiMapID,
 					position = { x = x, y = y },

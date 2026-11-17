@@ -82,14 +82,48 @@ local function colorForIndex(index)
 	return seq[((index - 1) % #seq) + 1]
 end
 
+-- Just the first name -- Forever characters have a first AND last name
+-- (unlike normal WoW's single-word names), and a cross-realm sender can
+-- also carry a "-Realm" suffix either way. Taking everything up to the
+-- first space (or, if there's no space at all, up to the first dash)
+-- isolates just the first name cleanly in both cases.
+local function firstName(fullName)
+	if not fullName then return fullName end
+	local word = fullName:match("^(%S+)") or fullName
+	return word:match("^([^%-]+)") or word
+end
+
+-- Tooltip text for a waypoint icon, same on the compass and the map.
+-- Temp waypoints can never be named (see Add/AddAt) -- showing a name
+-- that's always just "Waypoint" isn't useful -- so those show who it
+-- belongs to instead, first name only. Permanent waypoints are always
+-- yours and can be named/renamed, so those still show the real name.
+function Waypoints.TooltipLabel(entry)
+	local status = (entry.kind == "T")
+		and string.format(" (temp, %dm left)", math.max(0, math.floor((entry.expires - time()) / 60)))
+		or ""
+	if entry.kind == "P" then
+		return "[You] " .. entry.name .. status
+	end
+	if entry.mine then
+		return "Your waypoint" .. status
+	end
+	return firstName(entry.owner) .. "'s waypoint" .. status
+end
+
 -- Core waypoint-creation logic, usable both for "at my own current
 -- position" (Waypoints.Add, /wf wp add) and "at wherever I just clicked on
 -- the world map" (MapPins.lua's click handler). Always your own waypoint.
 -- Only TEMPORARY waypoints get broadcast to your party -- permanent ones
 -- stay purely local to you. Returns the created entry.
 function Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
-	if not name or name:trim() == "" then
-		name = isTemp and "Waypoint" or "Waypoint"
+	if isTemp then
+		-- Temp waypoints can never be named -- enforced here, not just at
+		-- the call sites, so it's a real guarantee regardless of caller.
+		-- The tooltip shows who it belongs to instead (see TooltipLabel).
+		name = "Waypoint"
+	elseif not name or name:trim() == "" then
+		name = "Waypoint"
 	end
 
 	local owner = myFullName()
@@ -97,12 +131,16 @@ function Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
 	local list = PC.db.waypoints[owner]
 
 	-- colorIndex only matters for temp waypoints (permanent ones are always
-	-- PERMANENT_COLOR, not round-robin -- see Waypoints.lua's header), so
-	-- only count existing TEMP ones here, so adding/removing permanent
-	-- waypoints never shifts the temp color sequence.
+	-- PERMANENT_COLOR, not round-robin -- see Waypoints.lua's header).
+	-- Counts every ACTIVE temp waypoint across the whole party, not just
+	-- your own -- otherwise your first waypoint and a party member's
+	-- first waypoint would both start at light blue. Only possible
+	-- without any new networking because GetAll() already reflects every
+	-- temp waypoint received so far (and lazily prunes expired ones, so
+	-- the sequence naturally recycles as old waypoints expire too).
 	local count = 0
-	for _, existing in pairs(list) do
-		if existing.kind == "T" then count = count + 1 end
+	for _, wp in ipairs(Waypoints.GetAll()) do
+		if wp.kind == "T" then count = count + 1 end
 	end
 	local colorIndex = count + 1
 
@@ -128,22 +166,28 @@ end
 Waypoints.colorForIndex = colorForIndex
 
 -- Adds a new waypoint at your current position. isTemp = true makes it
--- auto-expire after ~15 minutes AND shares it with your party; otherwise
--- it's permanent, stays until removed with Waypoints.Remove, and stays
--- purely local to you.
+-- auto-expire after ~15 minutes AND shares it with your party, with no
+-- name (temp waypoints can never be named -- see AddAt); otherwise it's
+-- permanent, stays until removed with Waypoints.Remove, requires a name,
+-- and stays purely local to you.
 function Waypoints.Add(name, iconNum, isTemp)
-	if not name or name:trim() == "" then
-		print("|cffff4444Wayfinder|r usage: /wf wp add <name>")
-		return
-	end
 	local uiMapID, position = hereAndNow()
 	if not uiMapID then
 		print("|cffff4444Wayfinder|r couldn't determine your position.")
 		return
 	end
-	-- No success print on purpose -- the icon appearing is the feedback,
-	-- same reasoning as the silent map-click path (see MapPins.lua).
-	Waypoints.AddAt(uiMapID, position, name, iconNum, isTemp)
+	if isTemp then
+		-- No success print on purpose -- the icon appearing is the
+		-- feedback, same reasoning as the silent map-click path (see
+		-- MapPins.lua).
+		Waypoints.AddAt(uiMapID, position, nil, iconNum, true)
+		return
+	end
+	if not name or name:trim() == "" then
+		print("|cffff4444Wayfinder|r usage: /wf wp add <name>")
+		return
+	end
+	Waypoints.AddAt(uiMapID, position, name, iconNum, false)
 end
 
 -- Removes one of YOUR OWN waypoints by name and tells your party it's gone.

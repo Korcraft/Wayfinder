@@ -24,9 +24,6 @@ local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/Wayfinder/Textures/Waypoint
 -- Already has its own color (gold/black), unlike the waypoint icons -- no
 -- white-mask conversion needed since it's never tinted per-item.
 local QUEST_TEXTURE = "Interface/AddOns/Wayfinder/Textures/QuestIcon.png"
--- Off for now -- see the quest render callback below for why. Flip to true
--- to bring the bigger-size/highlight treatment back for tracked quests.
-local TRACKED_HIGHLIGHT_ENABLED = false
 
 local CARDINALS = {
 	{ 0, "N" }, { 45, "NE" }, { 90, "E" }, { 135, "SE" },
@@ -255,13 +252,19 @@ local function makeQuestPool()
 		icon:SetScript("OnEnter", showIconTooltip)
 		icon:SetScript("OnLeave", hideIconTooltip)
 		icon:SetScript("OnMouseUp", function(self, button)
-			if button ~= "LeftButton" or not self.questID then return end
-			-- Same modern API the quest tracker itself uses to open to a
-			-- quest's details (confirmed via Questie's own tracker-click
-			-- code on this client) -- guarded against combat lockdown the
-			-- same way Questie does it, not guessed.
-			if QuestMapFrame_OpenToQuestDetails and not InCombatLockdown() then
-				QuestMapFrame_OpenToQuestDetails(self.questID)
+			if not self.questID then return end
+			if button == "LeftButton" then
+				-- Same modern API the quest tracker itself uses to open to a
+				-- quest's details (confirmed via Questie's own tracker-click
+				-- code on this client) -- guarded against combat lockdown the
+				-- same way Questie does it, not guessed.
+				if QuestMapFrame_OpenToQuestDetails and not InCombatLockdown() then
+					QuestMapFrame_OpenToQuestDetails(self.questID)
+				end
+			elseif button == "RightButton" then
+				-- Sets (or clears, if already focused) this quest as the
+				-- one super-tracked/highlighted quest -- see Quests.lua.
+				PC.Quests.ToggleFocus(self.questID)
 			end
 		end)
 		return icon
@@ -483,14 +486,11 @@ local function updateCompass()
 		icon.label:SetText("")
 
 		-- For the shift-click-to-remove handler and hover tooltip (see
-		-- makeWaypointPool) -- same tooltip text shape as the map pins.
+		-- makeWaypointPool) -- same tooltip text as the map pins.
 		icon.waypointId = item.id
 		icon.waypointKind = item.kind
 		icon.waypointName = item.name
-		local status = (item.kind == "T")
-			and string.format(" (temp, %dm left)", math.max(0, math.floor((item.expires - time()) / 60)))
-			or ""
-		icon.tooltipText = (item.mine and "[You] " or (item.owner .. ": ")) .. item.name .. status
+		icon.tooltipText = PC.Waypoints.TooltipLabel(item)
 	end, mapWidth, mapHeight)
 
 	-- Quest objectives in your CURRENT zone only -- PC.Quests.GetAll() asks
@@ -501,41 +501,39 @@ local function updateCompass()
 	if PC.db.options.showQuests then
 		renderBearingIcons(questPool, acquireQuest, throttled("quests", PC.Quests.GetAll), px, py, heading, width, fov, iconY,
 			function(icon, item)
-				-- Tracked (watched) quests CAN render bigger with a gold
-				-- highlight square behind them -- turned off for now (flip
-				-- TRACKED_HIGHLIGHT_ENABLED back on to re-enable) since on
-				-- this client most/all quests are "watched" by default, so
-				-- it ended up highlighting nearly everything instead of
-				-- picking out one focused quest. trackerNumber itself (see
-				-- Quests.lua) is untouched -- only the render side is unwired.
-				local tracked = TRACKED_HIGHLIGHT_ENABLED and item.trackerNumber ~= nil
-				local size = tracked and 30 or 22
+				-- The one FOCUSED (super-tracked) quest renders slightly
+				-- bigger and tinted orange-red -- no highlight square
+				-- anymore (tried that, didn't like it). icon.highlight
+				-- stays in the pool unused rather than removed, in case
+				-- it's wanted again later -- see makeQuestPool.
+				local tracked = item.focused
+				local baseSize = PC.db.options.compassQuestIconSize
+				local size = tracked and (baseSize + 4) or baseSize
 				icon:SetSize(size, size)
-				if tracked then
-					icon.highlight:ClearAllPoints()
-					icon.highlight:SetPoint("CENTER", icon, "CENTER")
-					icon.highlight:SetSize(size + 6, size + 6)
-					icon.highlight:Show()
-				else
-					icon.highlight:Hide()
-				end
+				icon.highlight:Hide()
 
 				if item.completed then
 					-- Real Blizzard atlas for the yellow "?" turn-in marker
 					-- (confirmed real via Baganator's own working code on
-					-- this client, not guessed).
+					-- this client, not guessed). Left white even when
+					-- focused -- tinting this well-known native symbol
+					-- risked making it harder to recognize.
 					icon.bg:SetAtlas("QuestTurnin")
 					icon.bg:SetVertexColor(1, 1, 1, 1)
 					icon.label:SetText("")
 				else
 					icon.bg:SetAtlas(nil)
 					icon.bg:SetTexture(QUEST_TEXTURE)
-					icon.bg:SetVertexColor(1, 1, 1, 1)
+					if tracked then
+						icon.bg:SetVertexColor(1.0, 0.27, 0.0, 1) -- orange-red (CSS "orangered")
+					else
+						icon.bg:SetVertexColor(1, 1, 1, 1)
+					end
 					icon.label:SetText("")
 				end
 
 				-- Hover tooltip and click-to-open (see makeQuestPool).
-				icon.tooltipText = item.title
+				icon.tooltipText = item.title .. (item.focused and " (focused -- right-click to unfocus)" or "\n(right-click to focus)")
 				icon.questID = item.questID
 			end, mapWidth, mapHeight)
 	else
@@ -570,7 +568,7 @@ local function updateCompass()
 						partyShown = partyShown + 1
 						local icon = acquireParty(partyShown)
 						icon.unit = member.unit -- for the hover tooltip (see makePartyPool)
-						icon:SetSize(28, 28) -- same size as permanent waypoints
+						icon:SetSize(PC.db.options.compassPartyIconSize, PC.db.options.compassPartyIconSize)
 						icon:ClearAllPoints()
 						icon:SetPoint("CENTER", strip, "CENTER", headingToPixel(diff, width, fov), iconY) -- bottom row, same as waypoints
 						applyPortrait(icon, member.unit, 1)
@@ -586,7 +584,7 @@ local function updateCompass()
 				partyShown = partyShown + 1
 				local icon = acquireParty(partyShown)
 				icon.unit = member.unit -- for the hover tooltip (see makePartyPool)
-				icon:SetSize(28, 28) -- same size as permanent waypoints
+				icon:SetSize(PC.db.options.compassPartyIconSize, PC.db.options.compassPartyIconSize)
 				icon:ClearAllPoints()
 				icon:SetPoint("RIGHT", strip, "RIGHT", -4, iconY - (edgeShown - 1) * 18)
 				applyPortrait(icon, member.unit, 0.45)

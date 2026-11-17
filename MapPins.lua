@@ -280,7 +280,7 @@ local function acquirePartyPin()
 		pin = CreateFrame("Frame", nil, WorldMapFrame)
 		pin:SetFrameStrata(WorldMapFrame:GetFrameStrata())
 		pin:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 50)
-		pin:SetSize(28, 28)
+		pin:SetSize(28, 28) -- placeholder -- real size set every refresh from mapPartyIconSize
 		-- Class-color outline: the same circular disc texture, a few px
 		-- bigger, drawn one sublevel behind the portrait/dot so only its
 		-- rim peeks out around the edge -- a ring, without needing a
@@ -346,10 +346,7 @@ function MapPins.Refresh()
 			local sz = PC.Waypoints.MapIconSize()
 			pin:SetSize(sz, sz)
 			placePin(pin, canvas, width, height, wp.position.x, wp.position.y)
-			local status = (wp.kind == "T")
-				and string.format(" (temp, %dm left)", math.max(0, math.floor((wp.expires - time()) / 60)))
-				or ""
-			pin.tooltipTitle = (wp.mine and "[You] " or (wp.owner .. ": ")) .. wp.name .. status
+			pin.tooltipTitle = PC.Waypoints.TooltipLabel(wp)
 			local c = (wp.kind == "P") and PC.Waypoints.PERMANENT_COLOR or PC.Waypoints.colorForIndex(wp.colorIndex or 1)
 			pin.bg:SetTexture(wp.kind == "P" and WAYPOINT_TEXTURE_PERMANENT or WAYPOINT_TEXTURE_TEMP)
 			pin.bg:SetVertexColor(c[1], c[2], c[3], 1)
@@ -377,6 +374,8 @@ function MapPins.Refresh()
 			if ok and pos then
 				local x, y = pos:GetXY()
 				local pin = acquirePartyPin()
+				local sz = PC.db.options.mapPartyIconSize
+				pin:SetSize(sz, sz)
 				placePin(pin, canvas, width, height, x, y)
 				pin.tooltipTitle = member.name
 				local c = PC.PartyTracker.ClassColor(member.unit)

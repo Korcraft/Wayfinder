@@ -31,14 +31,22 @@ local COLORS = {
 	{ key = "hudColor", label = "Compass HUD background color" },
 }
 
-local SLIDERS = {
-	{ key = "hudOpacity", label = "Compass HUD background opacity", min = 0, max = 1, steps = 20 },
-	{ key = "compassWidth", label = "Compass width", min = 250, max = 700, steps = 45, round = true },
-	{ key = "compassHeight", label = "Compass height", min = 48, max = 120, steps = 18, round = true },
-	-- The compass HUD and the world map each get their own waypoint icon
-	-- size slider now, instead of a shared small/medium/large pick.
-	{ key = "compassIconSize", label = "Compass waypoint icon size", min = 10, max = 40, steps = 30, round = true },
-	{ key = "mapIconSize", label = "Map waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+-- Split into two sections (headers in BuildPage) -- the compass HUD and
+-- the world map each get their own independent icon-size sliders (player/
+-- quest/waypoint for the HUD; player/waypoint for the map -- quests
+-- aren't shown on the map at all).
+local COMPASS_SLIDERS = {
+	{ key = "hudOpacity", label = "Background opacity", min = 0, max = 1, steps = 20 },
+	{ key = "compassWidth", label = "Width", min = 250, max = 700, steps = 45, round = true },
+	{ key = "compassHeight", label = "Height", min = 48, max = 120, steps = 18, round = true },
+	{ key = "compassPartyIconSize", label = "Player icon size", min = 10, max = 48, steps = 38, round = true },
+	{ key = "compassQuestIconSize", label = "Quest icon size", min = 10, max = 48, steps = 38, round = true },
+	{ key = "compassIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+}
+
+local MAP_SLIDERS = {
+	{ key = "mapPartyIconSize", label = "Player icon size", min = 10, max = 48, steps = 38, round = true },
+	{ key = "mapIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
 local ROW_SPACING = 30
@@ -137,6 +145,13 @@ local function BuildSlider(canvas, option, x, y)
 	return slider
 end
 
+local function BuildSectionHeader(parent, text, x, y)
+	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	header:SetPoint("TOPLEFT", x, y)
+	header:SetText(text)
+	return header
+end
+
 local function BuildCheckbox(canvas, option, x, y)
 	local box = CreateFrame("CheckButton", nil, canvas, "UICheckButtonTemplate")
 	box:SetPoint("TOPLEFT", x, y)
@@ -186,8 +201,18 @@ local function BuildPage(canvas)
 		y = y - ROW_SPACING
 	end
 
-	y = y - 10
-	for i, option in ipairs(SLIDERS) do
+	y = y - 18
+	BuildSectionHeader(content, "Compass HUD", 16, y)
+	y = y - 26
+	for i, option in ipairs(COMPASS_SLIDERS) do
+		BuildSlider(content, option, 16, y)
+		y = y - ROW_SPACING * 2
+	end
+
+	y = y - 8
+	BuildSectionHeader(content, "Map", 16, y)
+	y = y - 26
+	for i, option in ipairs(MAP_SLIDERS) do
 		BuildSlider(content, option, 16, y)
 		y = y - ROW_SPACING * 2
 	end

@@ -16,6 +16,9 @@ local DEFAULTS = {
 		fieldOfView = 180, -- degrees of heading shown across the compass strip
 		compassIconSize = 20, -- pixels -- waypoint icon size on the compass HUD
 		mapIconSize = 20, -- pixels -- waypoint icon size on the world map
+		compassPartyIconSize = 28, -- pixels -- party member icon size on the compass HUD
+		mapPartyIconSize = 28, -- pixels -- party member icon size on the world map
+		compassQuestIconSize = 22, -- pixels -- quest icon size on the compass HUD (quests aren't shown on the map)
 		showQuests = true,
 		showParty = true,
 		showFlightPaths = true,
@@ -104,7 +107,7 @@ local function printHelp()
 	print("                              Alt+click = permanent waypoint (local only)")
 	print("                              Shift+click = remove nearest of yours (confirms first if permanent)")
 	print("                              Right-click is untouched -- that's still the map's native zoom-out")
-	print("  /wf wp temp <name>            - add a waypoint at your current position")
+	print("  /wf wp temp                   - add a 15-minute waypoint at your current position (shared with party, can't be named)")
 	print("  /wf wp remove <name>          - remove one of YOUR waypoints by name")
 	print("  /wf wp clear                  - remove ALL of your own waypoints at once (clears test clutter)")
 	print("  /wf wp wipeall                - nuke EVERY waypoint, including any received from party (full reset)")
@@ -134,7 +137,7 @@ SlashCmdList.WAYFINDER = function(msg)
 		if sub == "add" then
 			PC.Waypoints.Add(arg, nil, false)
 		elseif sub == "temp" then
-			PC.Waypoints.Add(arg, nil, true)
+			PC.Waypoints.Add(nil, nil, true) -- temp waypoints can never be named
 		elseif sub == "remove" then
 			PC.Waypoints.Remove(arg)
 		elseif sub == "clear" then
