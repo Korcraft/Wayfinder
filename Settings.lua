@@ -6,46 +6,85 @@
 -- real and in active use on this client (Auctionator, Baganator,
 -- ProfitCraft, Syndicator). The older InterfaceOptions_AddCategory is
 -- deprecated and intentionally not used here.
+--
+-- Laid out as two fully independent sections, Compass and Map -- anything
+-- that applies to both surfaces (showing party members, portraits vs.
+-- class-color dots, icon sizes) has its own separate setting per surface,
+-- not one shared toggle. See Core.lua's migrateSharedPartySettings for how
+-- the old shared settings carry forward for anyone upgrading.
 
 local PC = Wayfinder
 PC.Settings = PC.Settings or {}
 local ModuleSettings = PC.Settings
 
-local OPTIONS = {
+local COMPASS_OPTIONS = {
 	{ key = "compassEnabled", label = "Show the compass HUD",
 		help = "Shows or hides the compass strip at the top of the screen." },
-	{ key = "showParty", label = "Show party members",
-		help = "Shows party members as bearing icons on the compass and as pins on the map." },
-	{ key = "showQuests", label = "Show quest objectives on the compass",
+	{ key = "showPartyCompass", label = "Show party members",
+		help = "Shows party members as bearing icons on the compass." },
+	{ key = "compassPartyIconDots", label = "Use class-color dots instead of portraits",
+		help = "Shows party members as a flat class-color dot instead of their real portrait, on the compass." },
+	{ key = "showQuests", label = "Show quest objectives",
 		help = "Shows a bearing icon for quests in your quest log whose objective is in your current zone. "
 			.. "Only quests Blizzard attached waypoint data to can show up -- some quests never will." },
-	{ key = "partyIconDots", label = "Use class-color dots instead of portraits",
-		help = "Shows party members as a flat class-color dot instead of their real portrait, "
-			.. "on both the compass and the map." },
+	{ key = "showFlightPathsCompass", label = "Show flight points",
+		help = "Shows flight points in your current zone on the compass -- grey boot = already discovered, "
+			.. "green boot = not yet discovered." },
+	{ key = "showAuctioneerCompass", label = "Show auction houses",
+		help = "Shows the auction house on the compass, but only once you're within the location proximity "
+			.. "radius (see the slider below) -- unlike other markers, these are permanent fixtures in nearly "
+			.. "every zone, so showing them zone-wide would clutter the compass far more than quests/waypoints do." },
+	{ key = "showBankCompass", label = "Show banks",
+		help = "Shows the bank on the compass, same proximity-radius rule as the auction house." },
+	{ key = "showMailboxCompass", label = "Show mailboxes",
+		help = "Shows ONLY THE NEAREST mailbox on the compass once you're within the proximity radius -- some "
+			.. "cities have several mailboxes, so showing all of them would be worse clutter than any other marker." },
+	{ key = "showInnkeeperCompass", label = "Show innkeepers",
+		help = "Shows the innkeeper on the compass, same proximity-radius rule as the auction house." },
 }
 
-local COLORS = {
-	{ key = "centerLineColor", label = "Compass center line color" },
-	{ key = "tickColor", label = "Compass tick color" },
-	{ key = "letterColor", label = "Compass letter color" },
-	{ key = "hudColor", label = "Compass HUD background color" },
+local MAP_OPTIONS = {
+	{ key = "showPartyMap", label = "Show party members",
+		help = "Shows party members as pins on the world map." },
+	{ key = "mapPartyIconDots", label = "Use class-color dots instead of portraits",
+		help = "Shows party members as a flat class-color dot instead of their real portrait, on the map." },
+	{ key = "showFlightPathsMap", label = "Show flight points",
+		help = "Shows flight points in your current zone on the world map -- grey boot = already discovered, "
+			.. "green boot = not yet discovered." },
+	{ key = "showAuctioneerMap", label = "Show auction houses",
+		help = "Shows the auction house in your current zone on the world map." },
+	{ key = "showBankMap", label = "Show banks",
+		help = "Shows the bank in your current zone on the world map." },
+	{ key = "showMailboxMap", label = "Show mailboxes",
+		help = "Shows every mailbox in your current zone on the world map -- unlike the compass, the map has "
+			.. "room to show all of them, not just the nearest." },
+	{ key = "showInnkeeperMap", label = "Show innkeepers",
+		help = "Shows the innkeeper in your current zone on the world map." },
 }
 
--- Split into two sections (headers in BuildPage) -- the compass HUD and
--- the world map each get their own independent icon-size sliders (player/
--- quest/waypoint for the HUD; player/waypoint for the map -- quests
--- aren't shown on the map at all).
+local COMPASS_COLORS = {
+	{ key = "centerLineColor", label = "Center line color" },
+	{ key = "tickColor", label = "Tick color" },
+	{ key = "letterColor", label = "Letter color" },
+	{ key = "hudColor", label = "HUD background color" },
+}
+
 local COMPASS_SLIDERS = {
 	{ key = "hudOpacity", label = "Background opacity", min = 0, max = 1, steps = 20 },
 	{ key = "compassWidth", label = "Width", min = 250, max = 700, steps = 45, round = true },
 	{ key = "compassHeight", label = "Height", min = 48, max = 120, steps = 18, round = true },
 	{ key = "compassPartyIconSize", label = "Player icon size", min = 10, max = 48, steps = 38, round = true },
 	{ key = "compassQuestIconSize", label = "Quest icon size", min = 10, max = 48, steps = 38, round = true },
+	{ key = "compassFlightIconSize", label = "Flight point icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "compassLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "compassLocationRadius", label = "Auction house/bank/mailbox/innkeeper show distance", min = 50, max = 1000, steps = 38, round = true, format = YardText },
 	{ key = "compassIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
 local MAP_SLIDERS = {
 	{ key = "mapPartyIconSize", label = "Player icon size", min = 10, max = 48, steps = 38, round = true },
+	{ key = "mapFlightIconSize", label = "Flight point icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "mapLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "mapIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
@@ -121,6 +160,10 @@ local function PixelText(value)
 	return string.format("%dpx", math.floor(value + 0.5))
 end
 
+local function YardText(value)
+	return string.format("%dy", math.floor(value + 0.5))
+end
+
 -- Blizzard's own slider-with-arrow-buttons template (MinimalSliderWithSteppersTemplate),
 -- confirmed real and used this exact way (Init/RegisterCallback signature,
 -- re-syncing with SetValue) by ProfitCraft's own working settings page on
@@ -133,7 +176,7 @@ local function BuildSlider(canvas, option, x, y)
 	local slider = CreateFrame("Frame", nil, canvas, "MinimalSliderWithSteppersTemplate")
 	slider:SetWidth(220)
 	slider:SetPoint("TOPLEFT", x + 8, y - ROW_SPACING + 4)
-	local formatter = option.round and PixelText or PercentText
+	local formatter = option.format or (option.round and PixelText or PercentText)
 	slider:Init(PC.db.options[option.key], option.min, option.max, option.steps,
 		{ [MinimalSliderWithSteppersMixin.Label.Right] = formatter })
 	slider:RegisterCallback(MinimalSliderWithSteppersMixin.Event.OnValueChanged, function(_, value)
@@ -190,29 +233,33 @@ local function BuildPage(canvas)
 	scroll:SetScript("OnSizeChanged", function(self) content:SetWidth(self:GetWidth()) end)
 
 	local y = -8
-	for i, option in ipairs(OPTIONS) do
+
+	BuildSectionHeader(content, "Compass", 16, y)
+	y = y - 26
+	for _, option in ipairs(COMPASS_OPTIONS) do
 		checkboxes[option] = BuildCheckbox(content, option, 16, y)
 		y = y - ROW_SPACING
 	end
-
 	y = y - 10
-	for i, option in ipairs(COLORS) do
+	for _, option in ipairs(COMPASS_COLORS) do
 		BuildColorSwatch(content, option, 16, y)
 		y = y - ROW_SPACING
 	end
-
-	y = y - 18
-	BuildSectionHeader(content, "Compass HUD", 16, y)
-	y = y - 26
-	for i, option in ipairs(COMPASS_SLIDERS) do
+	y = y - 10
+	for _, option in ipairs(COMPASS_SLIDERS) do
 		BuildSlider(content, option, 16, y)
 		y = y - ROW_SPACING * 2
 	end
 
-	y = y - 8
+	y = y - 18
 	BuildSectionHeader(content, "Map", 16, y)
 	y = y - 26
-	for i, option in ipairs(MAP_SLIDERS) do
+	for _, option in ipairs(MAP_OPTIONS) do
+		checkboxes[option] = BuildCheckbox(content, option, 16, y)
+		y = y - ROW_SPACING
+	end
+	y = y - 10
+	for _, option in ipairs(MAP_SLIDERS) do
 		BuildSlider(content, option, 16, y)
 		y = y - ROW_SPACING * 2
 	end

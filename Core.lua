@@ -9,6 +9,7 @@ PC.PREFIX = "PCOMPASS1" -- addon message prefix, must be <= 16 chars, same on ev
 -- Default saved-variable shape. Each module reads/writes WayfinderDB directly.
 local DEFAULTS = {
 	waypoints = {},   -- [playerFullName] = { [id] = { id, name, colorIndex, uiMapID, position={x,y}, kind, expires, mine } }
+	flightPointsFound = {}, -- [playerFullName] = { [lowercase flight point name] = true } -- per-character, see FlightPoints.lua
 	options = {
 		compassEnabled = true,
 		compassWidth = 420,
@@ -19,11 +20,33 @@ local DEFAULTS = {
 		compassPartyIconSize = 28, -- pixels -- party member icon size on the compass HUD
 		mapPartyIconSize = 28, -- pixels -- party member icon size on the world map
 		compassQuestIconSize = 22, -- pixels -- quest icon size on the compass HUD (quests aren't shown on the map)
+		compassFlightIconSize = 22, -- pixels -- flight point icon size on the compass HUD
+		mapFlightIconSize = 20, -- pixels -- flight point icon size on the world map
+		-- Shared by Auctioneer/Banker/Mailbox/Innkeeper -- one size per
+		-- surface and one compass-only proximity radius for all four,
+		-- rather than a separate size/radius per category, since they're
+		-- visually similar "static points of interest" (buildings, not
+		-- NPCs) rather than distinct concepts the way party/quests/flight
+		-- points are from each other.
+		compassLocationIconSize = 20, -- pixels
+		mapLocationIconSize = 18, -- pixels
+		compassLocationRadius = 300, -- yards -- compass-only; the map always shows the whole zone regardless of distance, same as every other marker
 		showQuests = true,
-		showParty = true,
-		showFlightPaths = true,
+		showPartyCompass = true,
+		showPartyMap = true,
+		showFlightPathsCompass = true,
+		showFlightPathsMap = true,
+		showAuctioneerCompass = true,
+		showAuctioneerMap = true,
+		showBankCompass = true,
+		showBankMap = true,
+		showMailboxCompass = true,
+		showMailboxMap = true,
+		showInnkeeperCompass = true,
+		showInnkeeperMap = true,
 		showPOI = true,
-		partyIconDots = false, -- false = real portraits, true = flat class-color dots
+		compassPartyIconDots = false, -- false = real portraits, true = flat class-color dots
+		mapPartyIconDots = false,
 		centerLineColor = { 1.0, 1.0, 1.0 }, -- the "straight ahead" line in the middle of the compass HUD
 		tickColor = { 1.0, 1.0, 1.0 }, -- the minor/major degree ticks
 		letterColor = { 1.0, 1.0, 1.0 }, -- the N/NE/E/... cardinal letters
@@ -75,9 +98,43 @@ local function migrateIconSizeSettings(options)
 	end
 end
 
+-- showParty/partyIconDots used to drive both the compass and the map from
+-- one shared setting -- now each surface has its own. Unlike
+-- migrateIconSizeSettings above, this one MUST run BEFORE applyDefaults:
+-- applyDefaults would otherwise create the new split keys with their
+-- defaults before this ever gets a chance to see the old shared value and
+-- carry it forward, silently discarding whatever the user had set.
+local function migrateSharedPartySettings(options)
+	if options.showParty ~= nil then
+		if options.showPartyCompass == nil then options.showPartyCompass = options.showParty end
+		if options.showPartyMap == nil then options.showPartyMap = options.showParty end
+		options.showParty = nil
+	end
+	if options.partyIconDots ~= nil then
+		if options.compassPartyIconDots == nil then options.compassPartyIconDots = options.partyIconDots end
+		if options.mapPartyIconDots == nil then options.mapPartyIconDots = options.partyIconDots end
+		options.partyIconDots = nil
+	end
+end
+
+-- showFlightPaths used to drive both surfaces from one shared setting --
+-- same split, same BEFORE-applyDefaults ordering requirement, as
+-- migrateSharedPartySettings above.
+local function migrateFlightPathSettings(options)
+	if options.showFlightPaths ~= nil then
+		if options.showFlightPathsCompass == nil then options.showFlightPathsCompass = options.showFlightPaths end
+		if options.showFlightPathsMap == nil then options.showFlightPathsMap = options.showFlightPaths end
+		options.showFlightPaths = nil
+	end
+end
+
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
 	if event == "ADDON_LOADED" and addonName == "Wayfinder" then
 		WayfinderDB = WayfinderDB or {}
+		if WayfinderDB.options then
+			migrateSharedPartySettings(WayfinderDB.options)
+			migrateFlightPathSettings(WayfinderDB.options)
+		end
 		applyDefaults(WayfinderDB, DEFAULTS)
 		migrateIconSizeSettings(WayfinderDB.options)
 		PC.db = WayfinderDB
@@ -90,6 +147,8 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
 		if PC.Waypoints and PC.Waypoints.Init then PC.Waypoints.Init() end
 		if PC.PartyTracker and PC.PartyTracker.Init then PC.PartyTracker.Init() end
 		if PC.Quests and PC.Quests.Init then PC.Quests.Init() end
+		if PC.FlightPoints and PC.FlightPoints.Init then PC.FlightPoints.Init() end
+		if PC.Locations and PC.Locations.Init then PC.Locations.Init() end
 		if PC.MapPins and PC.MapPins.Init then PC.MapPins.Init() end
 		if PC.Compass and PC.Compass.Init then PC.Compass.Init() end
 		if PC.Settings and PC.Settings.Init then PC.Settings.Init() end
@@ -115,9 +174,10 @@ local function printHelp()
 	print("  /wf settings       - open the Wayfinder settings panel (also under Options > AddOns)")
 	print("  /wf compass        - toggle the HUD compass")
 	print("  /wf quests         - toggle showing quest objectives")
-	print("  /wf party          - toggle showing party member positions")
 	print("  /wf facingcheck    - print the raw GetPlayerFacing() value, for calibrating the compass")
 	print("  /wf questcheck     - print exactly why quests are/aren't showing on the compass")
+	print("  /wf flightcheck    - print exactly what flight points are returned for your current zone")
+	print("  /wf locationscheck - print exactly what AH/bank/mailbox data exists for your current zone")
 end
 
 local function toggleOption(key, label)
@@ -159,10 +219,6 @@ SlashCmdList.WAYFINDER = function(msg)
 		print("|cff33ff99Wayfinder|r compass " .. (PC.db.options.compassEnabled and "enabled" or "disabled"))
 	elseif cmd == "quests" then
 		toggleOption("showQuests", "quest objectives")
-	elseif cmd == "party" then
-		toggleOption("showParty", "party member positions")
-	elseif cmd == "flightpaths" or cmd == "flights" then
-		toggleOption("showFlightPaths", "flight masters")
 	elseif cmd == "poi" then
 			if not (PC.POI and PC.db.customPOIs) then
 				print("|cffff4444Wayfinder|r the custom-POI feature isn't enabled yet.")
@@ -210,6 +266,10 @@ SlashCmdList.WAYFINDER = function(msg)
 			raw, raw * 180 / math.pi))
 	elseif cmd == "questcheck" then
 		if PC.Quests then PC.Quests.Debug() end
+	elseif cmd == "flightcheck" then
+		if PC.FlightPoints then PC.FlightPoints.Debug() end
+	elseif cmd == "locationscheck" then
+		if PC.Locations then PC.Locations.Debug() end
 	else
 		printHelp()
 	end

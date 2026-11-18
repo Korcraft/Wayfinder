@@ -25,6 +25,31 @@ local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/Wayfinder/Textures/Waypoint
 -- white-mask conversion needed since it's never tinted per-item.
 local QUEST_TEXTURE = "Interface/AddOns/Wayfinder/Textures/QuestIcon.png"
 
+-- Cropped from the user's own in-game flight-map screenshot (the taxi
+-- "boot" icon), alpha-masked but deliberately NOT flattened to pure white
+-- like the waypoint icons above -- this one keeps its original shading
+-- (near-black outline, light silver fill). SetVertexColor multiplies
+-- against that: the near-black outline stays dark under any tint (black *
+-- anything is still black), while the light fill brightens into whatever
+-- color is applied -- so one texture gives a properly outlined icon in
+-- both states below instead of losing the outline the way a flat white
+-- mask would.
+local FLIGHT_TEXTURE = "Interface/AddOns/Wayfinder/Textures/FlightPoint.png"
+-- Per the user's explicit mapping: grey = already discovered, green = not
+-- yet discovered (see FlightPoints.lua for how that's determined).
+local FLIGHT_DISCOVERED_COLOR = { 0.78, 0.78, 0.82 }
+local FLIGHT_UNDISCOVERED_COLOR = { 0.35, 1.0, 0.35 }
+
+-- Auctioneer/Banker/Mailbox icons -- see Locations.lua for how this static
+-- data was built. White alpha masks (same convention as the waypoint
+-- icons), tinted plain white (no per-item color) for now.
+local AUCTIONEER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/AuctionHouse.png"
+local AUCTIONEER_COLOR = { 0.64, 0.21, 0.93 }
+local MAILBOX_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Mailbox.png"
+local BANK_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Bank.png"
+local INNKEEPER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Innkeeper.png"
+local INNKEEPER_COLOR = { 0.9, 0.15, 0.15 }
+
 local CARDINALS = {
 	{ 0, "N" }, { 45, "NE" }, { 90, "E" }, { 135, "SE" },
 	{ 180, "S" }, { 225, "SW" }, { 270, "W" }, { 315, "NW" },
@@ -271,9 +296,50 @@ local function makeQuestPool()
 	end)
 end
 
+-- Flight points get their own (small) pool rather than the shared swatch
+-- pool -- they need a hover tooltip (the full node name plus discovered
+-- status), which the plain swatch pool doesn't wire up at all.
+local function makeFlightPool()
+	return makePool(function()
+		local icon = CreateFrame("Frame", nil, strip)
+		icon:SetSize(16, 16)
+		icon.bg = icon:CreateTexture(nil, "OVERLAY")
+		icon.bg:SetAllPoints()
+		icon:EnableMouse(true)
+		icon:SetScript("OnEnter", showIconTooltip)
+		icon:SetScript("OnLeave", hideIconTooltip)
+		return icon
+	end)
+end
+
+-- Same shape as makeFlightPool -- a plain icon with a hover tooltip, no
+-- special per-item state. Shared by Auctioneer/Banker/Mailbox since all
+-- three are the same kind of thing (a static point of interest), unlike
+-- flight points which need the extra discovered/undiscovered tint logic.
+-- Auctioneer/Banker/Mailbox all share this shape -- a plain icon with a
+-- hover tooltip, no special per-item state (unlike flight points, which
+-- need the extra discovered/undiscovered tint logic).
+local function makeLocationPool()
+	return makePool(function()
+		local icon = CreateFrame("Frame", nil, strip)
+		icon:SetSize(16, 16)
+		icon.bg = icon:CreateTexture(nil, "OVERLAY")
+		icon.bg:SetAllPoints()
+		icon:EnableMouse(true)
+		icon:SetScript("OnEnter", showIconTooltip)
+		icon:SetScript("OnLeave", hideIconTooltip)
+		return icon
+	end)
+end
+
 local wpPool, acquireWp = makeWaypointPool()
 local partyPool, acquireParty = makePartyPool()
 local questPool, acquireQuest = makeQuestPool()
+local flightPool, acquireFlight = makeFlightPool()
+local auctioneerPool, acquireAuctioneer = makeLocationPool()
+local bankPool, acquireBank = makeLocationPool()
+local mailboxPool, acquireMailbox = makeLocationPool()
+local innkeeperPool, acquireInnkeeper = makeLocationPool()
 local poiPool, acquirePoi = makeSwatchPool()
 local pingPool, acquirePing = makeSwatchPool()
 
@@ -313,7 +379,7 @@ local function applyPortrait(icon, unit, alpha)
 		icon.border:SetVertexColor(c[1], c[2], c[3], alpha)
 	end
 
-	local ok = not PC.db.options.partyIconDots and pcall(SetPortraitTexture, icon.bg, unit)
+	local ok = not PC.db.options.compassPartyIconDots and pcall(SetPortraitTexture, icon.bg, unit)
 	if ok then
 		icon.bg:SetVertexColor(1, 1, 1, alpha)
 	else
@@ -455,6 +521,11 @@ local function updateCompass()
 		for i = 1, #wpPool do wpPool[i]:Hide() end
 		for i = 1, #partyPool do partyPool[i]:Hide() end
 		for i = 1, #questPool do questPool[i]:Hide() end
+		for i = 1, #flightPool do flightPool[i]:Hide() end
+		for i = 1, #auctioneerPool do auctioneerPool[i]:Hide() end
+		for i = 1, #bankPool do bankPool[i]:Hide() end
+		for i = 1, #mailboxPool do mailboxPool[i]:Hide() end
+		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
 		return
 	end
 	local px, py = myPos:GetXY()
@@ -534,6 +605,151 @@ local function updateCompass()
 		for i = 1, #questPool do questPool[i]:Hide() end
 	end
 
+	-- Flight points in your CURRENT zone only -- PC.FlightPoints.GetAll()
+	-- already asks for your current map's nodes, so a point on a different
+	-- zone simply never appears here (see FlightPoints.lua -- this is
+	-- deliberate, not every known flight point on the continent).
+	if PC.db.options.showFlightPathsCompass then
+		local activeFlights = {}
+		for _, fp in ipairs(throttled("flightpoints", PC.FlightPoints.GetAll)) do
+			if fp.uiMapID == uiMapID then
+				activeFlights[#activeFlights + 1] = fp
+			end
+		end
+		renderBearingIcons(flightPool, acquireFlight, activeFlights, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassFlightIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(FLIGHT_TEXTURE)
+				local c = item.discovered and FLIGHT_DISCOVERED_COLOR or FLIGHT_UNDISCOVERED_COLOR
+				icon.bg:SetVertexColor(c[1], c[2], c[3], 1)
+				icon.tooltipText = item.name .. (item.discovered and "" or " (undiscovered)")
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #flightPool do flightPool[i]:Hide() end
+	end
+
+	-- Auction house -- zone-scoped like flight points/quests, PLUS a
+	-- proximity radius (compassLocationRadius, real yards via mapWidth/
+	-- mapHeight) ON TOP of that, unlike anything else on the compass. These
+	-- are permanent fixtures in nearly every zone (unlike quests/waypoints,
+	-- which come and go), so showing one the moment you enter a zone --
+	-- same rule flight points use -- would mean it's on screen almost all
+	-- the time in town zones. The world map has no such limit (see
+	-- MapPins.lua) -- showing everything there is fine, there's room.
+	-- Locations.lua entries are flat {x, y, uiMapID, zoneName} -- unlike
+	-- waypoints/flight points, which already carry {position = {x, y}}.
+	-- renderBearingIcons needs that wrapper shape, so this wraps one entry
+	-- at the point it's selected rather than reshaping the static data.
+	local function withPosition(loc)
+		return { position = { x = loc.x, y = loc.y } }
+	end
+
+	if PC.db.options.showAuctioneerCompass then
+		local radius = PC.db.options.compassLocationRadius
+		local activeAH = {}
+		for _, loc in ipairs(PC.Locations.GetAll("Auctioneer")) do
+			if loc.uiMapID == uiMapID then
+				local dx = (loc.x - px) * (mapWidth or 1)
+				local dy = (loc.y - py) * (mapHeight or 1)
+				if (dx * dx + dy * dy) <= (radius * radius) then
+					activeAH[#activeAH + 1] = withPosition(loc)
+				end
+			end
+		end
+		renderBearingIcons(auctioneerPool, acquireAuctioneer, activeAH, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassLocationIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(AUCTIONEER_TEXTURE)
+				icon.bg:SetVertexColor(AUCTIONEER_COLOR[1], AUCTIONEER_COLOR[2], AUCTIONEER_COLOR[3], 1)
+				icon.tooltipText = "Auction House"
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #auctioneerPool do auctioneerPool[i]:Hide() end
+	end
+
+	-- Bank -- same zone + proximity-radius rule as the auction house above.
+	if PC.db.options.showBankCompass then
+		local radius = PC.db.options.compassLocationRadius
+		local activeBanks = {}
+		for _, loc in ipairs(PC.Locations.GetAll("Banker")) do
+			if loc.uiMapID == uiMapID then
+				local dx = (loc.x - px) * (mapWidth or 1)
+				local dy = (loc.y - py) * (mapHeight or 1)
+				if (dx * dx + dy * dy) <= (radius * radius) then
+					activeBanks[#activeBanks + 1] = withPosition(loc)
+				end
+			end
+		end
+		renderBearingIcons(bankPool, acquireBank, activeBanks, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassLocationIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(BANK_TEXTURE)
+				icon.bg:SetVertexColor(1, 1, 1, 1)
+				icon.tooltipText = "Bank"
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #bankPool do bankPool[i]:Hide() end
+	end
+
+	-- Mailbox -- same zone + radius rule, but ONLY THE NEAREST one within
+	-- range is shown, never all of them -- unlike the AH/bank (one per
+	-- zone, so the radius filter alone is enough), a single city can have
+	-- several mailboxes (Stormwind/Ironforge each have 4, see
+	-- Locations.lua), and showing every one within 300y would be far
+	-- worse clutter than a single stray icon.
+	if PC.db.options.showMailboxCompass then
+		local radius = PC.db.options.compassLocationRadius
+		local nearest, nearestDistSq
+		for _, loc in ipairs(PC.Locations.GetAll("Mailbox")) do
+			if loc.uiMapID == uiMapID then
+				local dx = (loc.x - px) * (mapWidth or 1)
+				local dy = (loc.y - py) * (mapHeight or 1)
+				local distSq = dx * dx + dy * dy
+				if distSq <= (radius * radius) and (not nearestDistSq or distSq < nearestDistSq) then
+					nearest, nearestDistSq = loc, distSq
+				end
+			end
+		end
+		renderBearingIcons(mailboxPool, acquireMailbox, nearest and { withPosition(nearest) } or {}, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassLocationIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(MAILBOX_TEXTURE)
+				icon.bg:SetVertexColor(1, 1, 1, 1)
+				icon.tooltipText = "Mailbox"
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #mailboxPool do mailboxPool[i]:Hide() end
+	end
+
+	-- Innkeeper -- same zone + proximity-radius rule as the auction house/bank.
+	if PC.db.options.showInnkeeperCompass then
+		local radius = PC.db.options.compassLocationRadius
+		local activeInns = {}
+		for _, loc in ipairs(PC.Locations.GetAll("Innkeeper")) do
+			if loc.uiMapID == uiMapID then
+				local dx = (loc.x - px) * (mapWidth or 1)
+				local dy = (loc.y - py) * (mapHeight or 1)
+				if (dx * dx + dy * dy) <= (radius * radius) then
+					activeInns[#activeInns + 1] = withPosition(loc)
+				end
+			end
+		end
+		renderBearingIcons(innkeeperPool, acquireInnkeeper, activeInns, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassLocationIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(INNKEEPER_TEXTURE)
+				icon.bg:SetVertexColor(INNKEEPER_COLOR[1], INNKEEPER_COLOR[2], INNKEEPER_COLOR[3], 1)
+				icon.tooltipText = "Innkeeper"
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
+	end
+
 	-- Live party member positions -- shown at ALL times regardless of zone or
 	-- distance. Same-zone members get a precise bearing; a member in a
 	-- different zone gets a bearing computed on the nearest map you both
@@ -543,7 +759,7 @@ local function updateCompass()
 	-- continent, a dungeon/instance, etc.), no bearing is possible -- those
 	-- members are pinned to the compass's right edge instead of hidden, so
 	-- they're still always visibly present even without a direction.
-	do
+	if PC.db.options.showPartyCompass then
 		local partyShown, edgeShown = 0, 0
 		for _, member in ipairs(throttled("party", PC.PartyTracker.GetAll)) do
 			local mapID, mpx, mpy, mmx, mmy = PC.PartyTracker.GetCommonMapPosition(member.unit, member.uiMapID)
@@ -586,6 +802,8 @@ local function updateCompass()
 			end
 		end
 		for i = partyShown + 1, #partyPool do partyPool[i]:Hide() end
+	else
+		for i = 1, #partyPool do partyPool[i]:Hide() end
 	end
 end
 

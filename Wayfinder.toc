@@ -12,6 +12,8 @@ Comm.lua
 Waypoints.lua
 PartyTracker.lua
 Quests.lua
+FlightPoints.lua
+Locations.lua
 POI.lua
 IconStyle.lua
 MapPins.lua

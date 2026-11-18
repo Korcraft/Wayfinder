@@ -31,6 +31,15 @@ local MapPins = PC.MapPins
 -- Same icon constants as Compass.lua -- see the note there.
 local WAYPOINT_TEXTURE_TEMP = "Interface/AddOns/Wayfinder/Textures/WaypointTemp.png"
 local WAYPOINT_TEXTURE_PERMANENT = "Interface/AddOns/Wayfinder/Textures/WaypointPermanent.png"
+local FLIGHT_TEXTURE = "Interface/AddOns/Wayfinder/Textures/FlightPoint.png"
+local FLIGHT_DISCOVERED_COLOR = { 0.78, 0.78, 0.82 }
+local FLIGHT_UNDISCOVERED_COLOR = { 0.35, 1.0, 0.35 }
+local AUCTIONEER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/AuctionHouse.png"
+local AUCTIONEER_COLOR = { 0.64, 0.21, 0.93 }
+local MAILBOX_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Mailbox.png"
+local BANK_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Bank.png"
+local INNKEEPER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Innkeeper.png"
+local INNKEEPER_COLOR = { 0.9, 0.15, 0.15 }
 
 -- ---------------------------------------------------------------------------
 -- Rename dialog for permanent waypoints' name tags (double-click to open).
@@ -306,6 +315,92 @@ local function releasePartyPinsUnused()
 	for i = partyPinUsed + 1, #partyPinPool do partyPinPool[i]:Hide() end
 end
 
+-- ---------------------------------------------------------------------------
+-- Flight point pins -- same proven WorldMapFrame-parented pattern, no click
+-- gesture (just a hover tooltip with the node name + discovered status).
+-- ---------------------------------------------------------------------------
+
+local flightPinPool = {}
+local flightPinUsed = 0
+
+local function acquireFlightPin()
+	flightPinUsed = flightPinUsed + 1
+	local pin = flightPinPool[flightPinUsed]
+	if not pin then
+		pin = CreateFrame("Frame", nil, WorldMapFrame)
+		pin:SetFrameStrata(WorldMapFrame:GetFrameStrata())
+		pin:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 50)
+		pin:SetSize(20, 20)
+		pin.bg = pin:CreateTexture(nil, "OVERLAY")
+		pin.bg:SetAllPoints()
+		pin:EnableMouse(true)
+		pin:SetScript("OnEnter", function(self)
+			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+			GameTooltip:SetText(self.tooltipTitle or "")
+			GameTooltip:Show()
+		end)
+		pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		flightPinPool[flightPinUsed] = pin
+	end
+	pin:Show()
+	return pin
+end
+
+local function releaseFlightPinsUnused()
+	for i = flightPinUsed + 1, #flightPinPool do flightPinPool[i]:Hide() end
+end
+
+-- ---------------------------------------------------------------------------
+-- Auction house / bank / mailbox pins -- same shape as the flight pin pool
+-- above (no click gesture, just a hover tooltip), shared since all three
+-- are the same kind of thing (a static point of interest). One shared pool
+-- function, separate pool INSTANCES per category below so each can be
+-- shown/hidden independently.
+-- ---------------------------------------------------------------------------
+
+-- Returns (beginPass, acquire, endPass) -- beginPass zeroes the used-count
+-- for a fresh render pass, acquire grabs the next pin (creating one if the
+-- pool's run dry), endPass hides whatever's left over from last time. Same
+-- explicit begin/acquire/end shape as the flight pin pool above, just
+-- closure-based instead of module-level locals so this can be instantiated
+-- once per category (Auctioneer/Banker/Mailbox) without copy-pasting the
+-- whole pool.
+local function makeLocationPinPool()
+	local pool, used = {}, 0
+	local function beginPass() used = 0 end
+	local function acquire()
+		used = used + 1
+		local pin = pool[used]
+		if not pin then
+			pin = CreateFrame("Frame", nil, WorldMapFrame)
+			pin:SetFrameStrata(WorldMapFrame:GetFrameStrata())
+			pin:SetFrameLevel(WorldMapFrame:GetFrameLevel() + 50)
+			pin:SetSize(18, 18)
+			pin.bg = pin:CreateTexture(nil, "OVERLAY")
+			pin.bg:SetAllPoints()
+			pin:EnableMouse(true)
+			pin:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				GameTooltip:SetText(self.tooltipTitle or "")
+				GameTooltip:Show()
+			end)
+			pin:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			pool[used] = pin
+		end
+		pin:Show()
+		return pin
+	end
+	local function endPass()
+		for i = used + 1, #pool do pool[i]:Hide() end
+	end
+	return beginPass, acquire, endPass
+end
+
+local beginAuctioneerPins, acquireAuctioneerPin, endAuctioneerPins = makeLocationPinPool()
+local beginBankPins, acquireBankPin, endBankPins = makeLocationPinPool()
+local beginMailboxPins, acquireMailboxPin, endMailboxPins = makeLocationPinPool()
+local beginInnkeeperPins, acquireInnkeeperPin, endInnkeeperPins = makeLocationPinPool()
+
 local function placePin(pin, canvas, width, height, x, y)
 	pin:ClearAllPoints()
 	-- relativeTo = canvas (tracks the right map location); parent stays
@@ -333,6 +428,18 @@ function MapPins.Refresh()
 
 	local canvas = WorldMapFrame:GetCanvas()
 	local width, height = canvas:GetWidth(), canvas:GetHeight()
+
+	-- Player's own position on the CURRENTLY SHOWN map, if they're actually
+	-- standing on it -- used by the mailbox nearest-only filter below. Only
+	-- meaningful when shownMapID is the zone you're in; if you're browsing
+	-- a different zone's map, myX stays nil and that filter falls back to
+	-- showing every mailbox in it instead (there's no "nearest" to compute
+	-- without a real player position on that same map).
+	local myX, myY, myMapWidth, myMapHeight
+	local okMyPos, myPos = pcall(C_Map.GetPlayerMapPosition, shownMapID, "player")
+	if okMyPos and myPos then myX, myY = myPos:GetXY() end
+	local okMySize, mySizeW, mySizeH = pcall(C_Map.GetMapWorldSize, shownMapID)
+	if okMySize then myMapWidth, myMapHeight = mySizeW, mySizeH end
 
 	used = 0
 	for _, wp in ipairs(PC.Waypoints.GetAll()) do
@@ -366,37 +473,155 @@ function MapPins.Refresh()
 
 	-- Party member portraits -- same-map only (unlike the compass, a map
 	-- view can only ever show what's on the map currently open; there's no
-	-- sensible "edge pin" equivalent for a different zone here).
+	-- sensible "edge pin" equivalent for a different zone here). Gated by
+	-- its own setting, independent of the compass's.
 	partyPinUsed = 0
-	for _, member in ipairs(PC.PartyTracker.GetAll()) do
-		if member.uiMapID == shownMapID then
-			local ok, pos = pcall(C_Map.GetPlayerMapPosition, shownMapID, member.unit)
-			if ok and pos then
-				local x, y = pos:GetXY()
-				local pin = acquirePartyPin()
-				local sz = PC.db.options.mapPartyIconSize
-				pin:SetSize(sz, sz)
-				placePin(pin, canvas, width, height, x, y)
-				pin.tooltipTitle = member.name
-				local c = PC.PartyTracker.ClassColor(member.unit)
-				pin.border:ClearAllPoints()
-				pin.border:SetPoint("CENTER", pin, "CENTER")
-				pin.border:SetSize(pin:GetWidth() + 4, pin:GetHeight() + 4)
-				pin.border:SetVertexColor(c[1], c[2], c[3], 1)
-				local portraitOk = not PC.db.options.partyIconDots and pcall(SetPortraitTexture, pin.bg, member.unit)
-				if portraitOk then
-					pin.bg:SetVertexColor(1, 1, 1, 1)
-				else
-					-- Same round-disc trick as the compass -- a real
-					-- circular Blizzard texture tinted via vertex color,
-					-- not a flat SetColorTexture square.
-					pin.bg:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
-					pin.bg:SetVertexColor(c[1], c[2], c[3], 1)
+	if PC.db.options.showPartyMap then
+		for _, member in ipairs(PC.PartyTracker.GetAll()) do
+			if member.uiMapID == shownMapID then
+				local ok, pos = pcall(C_Map.GetPlayerMapPosition, shownMapID, member.unit)
+				if ok and pos then
+					local x, y = pos:GetXY()
+					local pin = acquirePartyPin()
+					local sz = PC.db.options.mapPartyIconSize
+					pin:SetSize(sz, sz)
+					placePin(pin, canvas, width, height, x, y)
+					pin.tooltipTitle = member.name
+					local c = PC.PartyTracker.ClassColor(member.unit)
+					pin.border:ClearAllPoints()
+					pin.border:SetPoint("CENTER", pin, "CENTER")
+					pin.border:SetSize(pin:GetWidth() + 4, pin:GetHeight() + 4)
+					pin.border:SetVertexColor(c[1], c[2], c[3], 1)
+					local portraitOk = not PC.db.options.mapPartyIconDots and pcall(SetPortraitTexture, pin.bg, member.unit)
+					if portraitOk then
+						pin.bg:SetVertexColor(1, 1, 1, 1)
+					else
+						-- Same round-disc trick as the compass -- a real
+						-- circular Blizzard texture tinted via vertex color,
+						-- not a flat SetColorTexture square.
+						pin.bg:SetTexture("Interface\\CHARACTERFRAME\\TempPortraitAlphaMask")
+						pin.bg:SetVertexColor(c[1], c[2], c[3], 1)
+					end
 				end
 			end
 		end
 	end
 	releasePartyPinsUnused()
+
+	-- Flight points -- same zone-scoped rule as the compass: GetAll()
+	-- already only returns nodes on the player's CURRENT map (see
+	-- FlightPoints.lua), and this double-checks against the map ACTUALLY
+	-- open (which can be a different zone than the one you're standing in).
+	flightPinUsed = 0
+	if PC.db.options.showFlightPathsMap then
+		for _, fp in ipairs(PC.FlightPoints.GetAll()) do
+			if fp.uiMapID == shownMapID then
+				local pin = acquireFlightPin()
+				local sz = PC.db.options.mapFlightIconSize
+				pin:SetSize(sz, sz)
+				placePin(pin, canvas, width, height, fp.position.x, fp.position.y)
+				pin.tooltipTitle = fp.name .. (fp.discovered and "" or " (undiscovered)")
+				pin.bg:SetTexture(FLIGHT_TEXTURE)
+				local c = fp.discovered and FLIGHT_DISCOVERED_COLOR or FLIGHT_UNDISCOVERED_COLOR
+				pin.bg:SetVertexColor(c[1], c[2], c[3], 1)
+			end
+		end
+	end
+	releaseFlightPinsUnused()
+
+	-- Auction house -- same zone-scoped rule, no distance limit (unlike the
+	-- compass -- see Compass.lua for why that one needs a proximity radius
+	-- and this doesn't: the map has room to show a whole zone's markers).
+	beginAuctioneerPins()
+	if PC.db.options.showAuctioneerMap then
+		for _, loc in ipairs(PC.Locations.GetAll("Auctioneer")) do
+			if loc.uiMapID == shownMapID then
+				local pin = acquireAuctioneerPin()
+				local sz = PC.db.options.mapLocationIconSize
+				pin:SetSize(sz, sz)
+				placePin(pin, canvas, width, height, loc.x, loc.y)
+				pin.tooltipTitle = "Auction House"
+				pin.bg:SetTexture(AUCTIONEER_TEXTURE)
+				pin.bg:SetVertexColor(AUCTIONEER_COLOR[1], AUCTIONEER_COLOR[2], AUCTIONEER_COLOR[3], 1)
+			end
+		end
+	end
+	endAuctioneerPins()
+
+	-- Bank -- same zone-scoped, no-distance-limit rule.
+	beginBankPins()
+	if PC.db.options.showBankMap then
+		for _, loc in ipairs(PC.Locations.GetAll("Banker")) do
+			if loc.uiMapID == shownMapID then
+				local pin = acquireBankPin()
+				local sz = PC.db.options.mapLocationIconSize
+				pin:SetSize(sz, sz)
+				placePin(pin, canvas, width, height, loc.x, loc.y)
+				pin.tooltipTitle = "Bank"
+				pin.bg:SetTexture(BANK_TEXTURE)
+				pin.bg:SetVertexColor(1, 1, 1, 1)
+			end
+		end
+	end
+	endBankPins()
+
+	-- Mailbox -- same nearest-only rule as the compass now (see
+	-- Compass.lua's own note on why: several cities have multiple
+	-- mailboxes, and showing all of them is worse clutter than any other
+	-- marker). Needs a real player position on the SHOWN map to know what
+	-- "nearest" means -- falls back to showing every mailbox in the zone
+	-- if you're browsing a map you're not actually standing on.
+	beginMailboxPins()
+	if PC.db.options.showMailboxMap then
+		local nearest, nearestDistSq
+		for _, loc in ipairs(PC.Locations.GetAll("Mailbox")) do
+			if loc.uiMapID == shownMapID then
+				if myX then
+					local dx = (loc.x - myX) * (myMapWidth or 1)
+					local dy = (loc.y - myY) * (myMapHeight or 1)
+					local distSq = dx * dx + dy * dy
+					if not nearestDistSq or distSq < nearestDistSq then
+						nearest, nearestDistSq = loc, distSq
+					end
+				else
+					local pin = acquireMailboxPin()
+					local sz = PC.db.options.mapLocationIconSize
+					pin:SetSize(sz, sz)
+					placePin(pin, canvas, width, height, loc.x, loc.y)
+					pin.tooltipTitle = "Mailbox"
+					pin.bg:SetTexture(MAILBOX_TEXTURE)
+					pin.bg:SetVertexColor(1, 1, 1, 1)
+				end
+			end
+		end
+		if myX and nearest then
+			local pin = acquireMailboxPin()
+			local sz = PC.db.options.mapLocationIconSize
+			pin:SetSize(sz, sz)
+			placePin(pin, canvas, width, height, nearest.x, nearest.y)
+			pin.tooltipTitle = "Mailbox"
+			pin.bg:SetTexture(MAILBOX_TEXTURE)
+			pin.bg:SetVertexColor(1, 1, 1, 1)
+		end
+	end
+	endMailboxPins()
+
+	-- Innkeeper -- same zone-scoped, no-distance-limit rule.
+	beginInnkeeperPins()
+	if PC.db.options.showInnkeeperMap then
+		for _, loc in ipairs(PC.Locations.GetAll("Innkeeper")) do
+			if loc.uiMapID == shownMapID then
+				local pin = acquireInnkeeperPin()
+				local sz = PC.db.options.mapLocationIconSize
+				pin:SetSize(sz, sz)
+				placePin(pin, canvas, width, height, loc.x, loc.y)
+				pin.tooltipTitle = "Innkeeper"
+				pin.bg:SetTexture(INNKEEPER_TEXTURE)
+				pin.bg:SetVertexColor(INNKEEPER_COLOR[1], INNKEEPER_COLOR[2], INNKEEPER_COLOR[3], 1)
+			end
+		end
+	end
+	endInnkeeperPins()
 end
 
 local function setupMapClickGestures()

@@ -23,9 +23,11 @@ local PartyTracker = PC.PartyTracker
 
 function PartyTracker.Init() end
 
+-- No showParty gate here on purpose -- the compass and the map each have
+-- their own independent show/hide setting now (showPartyCompass/
+-- showPartyMap), so that decision belongs to each caller, not here.
 function PartyTracker.GetAll()
 	local list = {}
-	if not PC.db.options.showParty then return list end
 	if not IsInGroup() then return list end
 
 	local units = {}
