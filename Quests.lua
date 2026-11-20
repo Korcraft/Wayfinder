@@ -128,6 +128,108 @@ local function buildPOICache(uiMapID)
 	return cache
 end
 
+-- Which zone a quest belongs to -- a DIFFERENT, more basic question than
+-- "where exactly is its waypoint" (findPosition above), so it's worth
+-- trying even though GetNextWaypoint's own coordinate resolution came back
+-- empty for every quest tested on this client (see file header).
+-- GetQuestUiMapID (confirmed real via Questie's own QuestieCompat.lua,
+-- which documents and uses it this exact way, linking to the real Blizzard
+-- API wiki page) only needs to know which map a quest is associated with,
+-- not resolve a precise coordinate on it -- falls back to
+-- GetNextWaypoint's own map-ID return (ignoring its x/y) only if the
+-- direct API is missing entirely.
+local function getQuestUiMapID(questID)
+	if _G.GetQuestUiMapID then
+		local ok, uiMapID = pcall(_G.GetQuestUiMapID, questID)
+		if ok and uiMapID and uiMapID ~= 0 then return uiMapID end
+	end
+	if C_QuestLog and C_QuestLog.GetNextWaypoint then
+		local ok, uiMapID = pcall(C_QuestLog.GetNextWaypoint, questID)
+		if ok and uiMapID and uiMapID ~= 0 then return uiMapID end
+	end
+	return nil
+end
+
+-- uiMapID -> its own name, or nil if unresolvable.
+local function mapName(uiMapID)
+	local ok, info = pcall(C_Map.GetMapInfo, uiMapID)
+	if not ok or not info then return nil end
+	return info.name
+end
+
+-- uiMapID -> its continent-level ancestor's name, walking up the parent
+-- chain (same technique as PartyTracker.lua's mapChain) until a map whose
+-- mapType is genuinely Continent (confirmed real via Enum.UIMapType --
+-- used this exact way by Questie/TellMeWhen/Spoken_Places on this client)
+-- turns up, or nil if none does.
+local function continentName(uiMapID)
+	local id = uiMapID
+	local seen = {}
+	while id and id ~= 0 and not seen[id] do
+		seen[id] = true
+		local ok, info = pcall(C_Map.GetMapInfo, id)
+		if not ok or not info then return nil end
+		if info.mapType == Enum.UIMapType.Continent then
+			return info.name
+		end
+		id = info.parentMapID
+	end
+	return nil
+end
+
+-- The two continents this server's leveling content spans -- used only to
+-- pick a fixed compass direction for a focused quest on the OTHER
+-- continent (see Compass.lua), nothing more geography-accurate than that.
+local WEST_CONTINENT = "Kalimdor"
+local EAST_CONTINENT = "Eastern Kingdoms"
+
+-- Info for the focused quest, meant for when it ISN'T on your current map
+-- (Compass.lua only calls this once the normal same-zone position lookup
+-- already came up empty). Returns (label, direction, questID, title,
+-- completed):
+--   label     -> "Zone" normally, or "Zone - Continent" specifically when
+--                the quest's continent differs from YOUR OWN current one
+--                (not just "whenever a continent happens to resolve" --
+--                that would append it even for a same-continent, different-
+--                zone quest, which isn't useful context since you're
+--                already on that continent)
+--   direction -> "west" or "east" if the quest's continent is one of the
+--                two known ones and differs from yours, else nil -- lets
+--                Compass.lua show a fixed-direction icon for it, same idea
+--                as Blizzard's own cross-continent supertrack arrow
+--   questID/title/completed -> everything else a quest icon's style
+--                function needs, so Compass.lua doesn't need a second
+--                round-trip through the quest log for this one entry
+-- All nil if nothing's focused or its zone can't be resolved at all.
+function Quests.GetFocusedOutOfZoneInfo()
+	local focusedQuestID = getFocusedQuestID()
+	if not focusedQuestID then return nil end
+	local questUiMapID = getQuestUiMapID(focusedQuestID)
+	if not questUiMapID then return nil end
+
+	local label = mapName(questUiMapID)
+	if not label then return nil end
+
+	local playerUiMapID = C_Map.GetBestMapForUnit("player")
+	local questContinent = continentName(questUiMapID)
+	local playerContinent = playerUiMapID and continentName(playerUiMapID)
+
+	local direction = nil
+	if questContinent and playerContinent and questContinent ~= playerContinent then
+		label = label .. " - " .. questContinent
+		if questContinent == WEST_CONTINENT then
+			direction = "west"
+		elseif questContinent == EAST_CONTINENT then
+			direction = "east"
+		end
+	end
+
+	local titleOk, title = pcall(C_QuestLog.GetTitleForQuestID, focusedQuestID)
+	local completedOk, completed = pcall(C_QuestLog.IsComplete, focusedQuestID)
+
+	return label, direction, focusedQuestID, titleOk and title or "", completedOk and completed or false
+end
+
 -- What should show: if a quest is focused, ONLY that one, ignoring
 -- tracked/watched status entirely. Otherwise, every tracked quest.
 function Quests.GetAll()
@@ -176,6 +278,9 @@ function Quests.Debug()
 	print("  GetNextWaypointForMap exists: " .. tostring(C_QuestLog and C_QuestLog.GetNextWaypointForMap ~= nil))
 	print("  GetQuestsOnMap exists: " .. tostring(C_QuestLog and C_QuestLog.GetQuestsOnMap ~= nil))
 	print("  GetQuestIDForQuestWatchIndex exists: " .. tostring(C_QuestLog and C_QuestLog.GetQuestIDForQuestWatchIndex ~= nil))
+	print("  GetQuestUiMapID (raw global) exists: " .. tostring(_G.GetQuestUiMapID ~= nil))
+	local outOfZoneLabel, outOfZoneDirection = Quests.GetFocusedOutOfZoneInfo()
+	print("  focused quest out-of-zone label: " .. tostring(outOfZoneLabel) .. "  direction: " .. tostring(outOfZoneDirection))
 
 	if C_QuestLog and C_QuestLog.GetNumQuestWatches then
 		local ok, count = pcall(C_QuestLog.GetNumQuestWatches)

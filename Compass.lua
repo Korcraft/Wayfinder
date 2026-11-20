@@ -572,7 +572,53 @@ local function updateCompass()
 	-- at all (see Quests.lua) -- that's a real coverage gap, not a bug.
 	if PC.db.options.showQuests then
 		local activeQuests = throttled("quests", PC.Quests.GetAll)
-		renderBearingIcons(questPool, acquireQuest, activeQuests, px, py, heading, width, fov, iconY,
+
+		local focusedItem
+		for _, item in ipairs(activeQuests) do
+			if item.focused then
+				focusedItem = item
+				break
+			end
+		end
+
+		-- Only relevant when the focused quest ISN'T in activeQuests at all
+		-- (GetAll() filters out anything it can't resolve a position for on
+		-- the CURRENT map, true both when nothing's focused and when
+		-- something's focused but elsewhere -- GetFocusedOutOfZoneInfo's
+		-- label disambiguates, since it's only ever non-nil when something
+		-- IS actually focused). Packed into a table since throttled() only
+		-- caches a single return value, not all five.
+		local outOfZone
+		if not focusedItem then
+			outOfZone = throttled("focusedOutOfZone", function()
+				local label, direction, questID, title, completed = PC.Quests.GetFocusedOutOfZoneInfo()
+				return { label = label, direction = direction, questID = questID, title = title, completed = completed }
+			end)
+		end
+
+		-- Which list actually gets rendered: the normal in-zone set, unless
+		-- the focused quest is out-of-zone but on a known continent -- then
+		-- swap in a single synthetic entry positioned to produce an exact
+		-- due-west/due-east bearing (not a real coordinate -- there isn't
+		-- one that means anything across separate continents -- just
+		-- engineered so the existing bearing math in renderBearingIcons
+		-- outputs exactly 270/90 degrees). Safe to just replace
+		-- activeQuests outright here: if something's focused, GetAll()
+		-- already returned ONLY that one quest (empty, since it didn't
+		-- resolve), so there's nothing else in it to lose.
+		local renderList = activeQuests
+		if outOfZone and outOfZone.direction and mapWidth then
+			local offsetX = (outOfZone.direction == "east") and 1 or -1
+			renderList = { {
+				questID = outOfZone.questID,
+				title = outOfZone.title,
+				completed = outOfZone.completed,
+				focused = true,
+				position = { x = px + offsetX, y = py },
+			} }
+		end
+
+		renderBearingIcons(questPool, acquireQuest, renderList, px, py, heading, width, fov, iconY,
 			function(icon, item)
 				-- Plain size/color regardless of focused state now -- the
 				-- FILTERING already does the work (see Quests.GetAll):
@@ -604,25 +650,22 @@ local function updateCompass()
 				icon.questID = item.questID
 			end, mapWidth, mapHeight)
 
-		-- Distance readout for the focused quest only -- same position data
+		-- Distance readout for the focused quest -- same position data
 		-- (px/py, mapWidth/mapHeight) already fetched above for the bearing
 		-- icons, just converted to real yards via Pythagoras instead of an
 		-- angle. GetAll() only ever returns the single focused quest when
 		-- one is focused (see Quests.lua), so at most one entry here has
-		-- focused == true.
+		-- focused == true. Out of zone: shows the zone/continent label
+		-- text instead (computed above either way).
 		if questDistanceText then
-			local focusedItem
-			for _, item in ipairs(activeQuests) do
-				if item.focused then
-					focusedItem = item
-					break
-				end
-			end
 			if focusedItem and mapWidth and mapHeight then
 				local dx = (focusedItem.position.x - px) * mapWidth
 				local dy = (focusedItem.position.y - py) * mapHeight
 				local distance = math.sqrt(dx * dx + dy * dy)
 				questDistanceText:SetText(string.format("%d yd", distance))
+				questDistanceText:Show()
+			elseif outOfZone and outOfZone.label then
+				questDistanceText:SetText(outOfZone.label)
 				questDistanceText:Show()
 			else
 				questDistanceText:Hide()
