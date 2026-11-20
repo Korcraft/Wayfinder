@@ -11,7 +11,7 @@ local PC = Wayfinder
 PC.Compass = PC.Compass or {}
 local Compass = PC.Compass
 
-local frame, strip, centerTick, bgTop, bgBottom
+local frame, strip, centerTick, bgTop, bgBottom, questDistanceText
 local markers = {} -- cardinal letter labels, reused
 local ticks = {}   -- minor/major tick marks between the labels, reused
 
@@ -526,6 +526,7 @@ local function updateCompass()
 		for i = 1, #bankPool do bankPool[i]:Hide() end
 		for i = 1, #mailboxPool do mailboxPool[i]:Hide() end
 		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
+		if questDistanceText then questDistanceText:Hide() end
 		return
 	end
 	local px, py = myPos:GetXY()
@@ -570,7 +571,8 @@ local function updateCompass()
 	-- Only quests Blizzard actually attached waypoint data to can show up
 	-- at all (see Quests.lua) -- that's a real coverage gap, not a bug.
 	if PC.db.options.showQuests then
-		renderBearingIcons(questPool, acquireQuest, throttled("quests", PC.Quests.GetAll), px, py, heading, width, fov, iconY,
+		local activeQuests = throttled("quests", PC.Quests.GetAll)
+		renderBearingIcons(questPool, acquireQuest, activeQuests, px, py, heading, width, fov, iconY,
 			function(icon, item)
 				-- Plain size/color regardless of focused state now -- the
 				-- FILTERING already does the work (see Quests.GetAll):
@@ -601,8 +603,34 @@ local function updateCompass()
 				icon.tooltipText = item.title .. (item.focused and " (focused -- right-click to unfocus)" or "\n(right-click to focus)")
 				icon.questID = item.questID
 			end, mapWidth, mapHeight)
+
+		-- Distance readout for the focused quest only -- same position data
+		-- (px/py, mapWidth/mapHeight) already fetched above for the bearing
+		-- icons, just converted to real yards via Pythagoras instead of an
+		-- angle. GetAll() only ever returns the single focused quest when
+		-- one is focused (see Quests.lua), so at most one entry here has
+		-- focused == true.
+		if questDistanceText then
+			local focusedItem
+			for _, item in ipairs(activeQuests) do
+				if item.focused then
+					focusedItem = item
+					break
+				end
+			end
+			if focusedItem and mapWidth and mapHeight then
+				local dx = (focusedItem.position.x - px) * mapWidth
+				local dy = (focusedItem.position.y - py) * mapHeight
+				local distance = math.sqrt(dx * dx + dy * dy)
+				questDistanceText:SetText(string.format("%d yd", distance))
+				questDistanceText:Show()
+			else
+				questDistanceText:Hide()
+			end
+		end
 	else
 		for i = 1, #questPool do questPool[i]:Hide() end
+		if questDistanceText then questDistanceText:Hide() end
 	end
 
 	-- Flight points in your CURRENT zone only -- PC.FlightPoints.GetAll()
@@ -842,6 +870,13 @@ function Compass.Init()
 	centerTick:SetPoint("CENTER")
 	centerTick:SetColorTexture(1, 1, 1, 0.8)
 	-- Size applied below via Compass.Refresh().
+
+	-- Distance to the focused quest's objective, dead center, right below
+	-- the icon row (bgBottom -- "the second bar"). Only shown while a
+	-- quest is actually focused (super-tracked) -- see updateCompass.
+	questDistanceText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	questDistanceText:SetPoint("TOP", bgBottom, "BOTTOM", 0, -2)
+	questDistanceText:Hide()
 
 	-- Runs every frame, not throttled: the math here (a handful of trig calls
 	-- over a dozen-ish markers) is cheap, and anything coarser than ~60fps
