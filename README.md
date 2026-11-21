@@ -12,7 +12,7 @@ An FPS-style compass strip across the top of the screen, scrolling cardinal lett
 - **Auction houses, banks, mailboxes, innkeepers** — shown once you're within a configurable distance, since these are permanent fixtures in nearly every zone (mailboxes show only the nearest one, to avoid clutter in cities with several)
 - **Your shared waypoints** — see below
 
-Width, height, field of view, colors, and icon sizes are all configurable per element.
+Width, height, field of view, colors, and icon sizes are all configurable per element. An optional **Dynamic Icons** setting shrinks and fades icons the further they are from dead-center, down to a configurable floor at the exact edge of the field of view.
 
 ## Shared Waypoints
 
