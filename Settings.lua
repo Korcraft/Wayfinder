@@ -41,6 +41,9 @@ local COMPASS_OPTIONS = {
 			.. "cities have several mailboxes, so showing all of them would be worse clutter than any other marker." },
 	{ key = "showInnkeeperCompass", label = "Show innkeepers",
 		help = "Shows the innkeeper on the compass, same proximity-radius rule as the auction house." },
+	{ key = "dynamicIconsEnabled", label = "Dynamic icons",
+		help = "Icons shrink and fade the further they are from dead-center on the compass, down to the scale/fade "
+			.. "floors set by the two sliders below once an icon reaches the exact edge of the field of view." },
 }
 
 local MAP_OPTIONS = {
@@ -79,6 +82,8 @@ local COMPASS_SLIDERS = {
 	{ key = "compassLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "compassLocationRadius", label = "Auction house/bank/mailbox/innkeeper show distance", min = 50, max = 1000, steps = 38, round = true, format = YardText },
 	{ key = "compassIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "dynamicIconsScale", label = "Dynamic icon scale at edge", min = 0, max = 1, steps = 20 },
+	{ key = "dynamicIconsFade", label = "Dynamic icon fade at edge", min = 0, max = 1, steps = 20 },
 }
 
 local MAP_SLIDERS = {

@@ -143,6 +143,27 @@ local function getMapWorldSize(uiMapID)
 	return nil, nil
 end
 
+-- Dynamic Icons (Settings panel): dead-center is always full scale/opacity;
+-- by the exact edge of the field of view (|diff| == fov/2) an icon has
+-- eased down to dynamicIconsScale/dynamicIconsFade, with a straight linear
+-- slide between those two points. Applied via SetScale (not SetSize) so it
+-- works uniformly on top of every category's own already-configured base
+-- icon size without each one needing its own falloff logic, and resets to
+-- 1/1 every call so a pooled icon never keeps a stale scale/alpha from a
+-- previous render (e.g. right after the feature gets toggled off).
+local function applyDynamicIcon(icon, diff, fov)
+	if PC.db.options.dynamicIconsEnabled then
+		local edgeFrac = math.min(1, math.abs(diff) / (fov / 2))
+		local minScale = PC.db.options.dynamicIconsScale
+		local minFade = PC.db.options.dynamicIconsFade
+		icon:SetScale(1 - edgeFrac * (1 - minScale))
+		icon:SetAlpha(1 - edgeFrac * (1 - minFade))
+	else
+		icon:SetScale(1)
+		icon:SetAlpha(1)
+	end
+end
+
 -- Renders `items` (each needing a .position = {x,y}) at their bearing from
 -- (px,py), hiding any pool entries left over from the last call. mapWidth/
 -- mapHeight (real yards, from C_Map.GetMapWorldSize) scale the normalized
@@ -170,6 +191,7 @@ local function renderBearingIcons(pool, acquire, items, px, py, heading, width, 
 				icon:ClearAllPoints()
 				icon:SetPoint("CENTER", strip, "CENTER", headingToPixel(diff, width, fov), yOffset)
 				if style then style(icon, item) end
+				applyDynamicIcon(icon, diff, fov)
 				icon:Show()
 			end
 		end
@@ -853,6 +875,7 @@ local function updateCompass()
 						icon:ClearAllPoints()
 						icon:SetPoint("CENTER", strip, "CENTER", headingToPixel(diff, width, fov), iconY) -- bottom row, same as waypoints
 						applyPortrait(icon, member.unit, 1)
+						applyDynamicIcon(icon, diff, fov)
 						icon:Show()
 						placed = true
 					end

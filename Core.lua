@@ -52,6 +52,13 @@ local DEFAULTS = {
 		letterColor = { 1.0, 1.0, 1.0 }, -- the N/NE/E/... cardinal letters
 		hudColor = { 0.0, 0.0, 0.0 }, -- the two background panels behind the ticks+letters and the icon row
 		hudOpacity = 0.35,
+		-- When enabled, every bearing icon on the compass HUD shrinks and
+		-- fades smoothly between full size/opacity dead-center and these
+		-- two floors at the exact edge of the field of view -- see
+		-- Compass.lua's applyDynamicIcon() for the actual falloff math.
+		dynamicIconsEnabled = false,
+		dynamicIconsScale = 0.5, -- minimum scale (fraction of normal) at the edge of the HUD
+		dynamicIconsFade = 0.5, -- minimum opacity (fraction of normal) at the edge of the HUD
 		iconStyle = "letter", -- "letter" or "icon"
 		colors = {
 			waypointMine = { 0.3, 1.0, 0.3 },
