@@ -143,23 +143,31 @@ local function getMapWorldSize(uiMapID)
 	return nil, nil
 end
 
--- Dynamic Icons (Settings panel): dead-center is always full scale/opacity;
--- by the exact edge of the field of view (|diff| == fov/2) an icon has
--- eased down to dynamicIconsScale/dynamicIconsFade, with a straight linear
--- slide between those two points. Applied via SetScale (not SetSize) so it
--- works uniformly on top of every category's own already-configured base
--- icon size without each one needing its own falloff logic, and resets to
--- 1/1 every call so a pooled icon never keeps a stale scale/alpha from a
--- previous render (e.g. right after the feature gets toggled off).
+-- Dynamic Icons (Settings panel): dead-center is always full size/opacity
+-- (whatever that category's own icon-size slider says); by the exact edge
+-- of the field of view (|diff| == fov/2) an icon has eased down to
+-- dynamicIconsScale/dynamicIconsFade, with a straight linear slide between
+-- those two points. Must run AFTER style(icon, item) has already called
+-- icon:SetSize() with that category's configured size -- icon:GetWidth()
+-- at that point IS the "dead center" base size to shrink from, so this
+-- works uniformly on top of every category without each one needing its
+-- own falloff logic. Deliberately resizes via SetSize, NOT SetScale --
+-- SetScale interprets this icon's own SetPoint offset in ITS OWN scaled
+-- units, so shrinking it that way silently drags the icon off its intended
+-- bearing position (worse the further from center it is); resizing leaves
+-- the anchor point itself untouched.
 local function applyDynamicIcon(icon, diff, fov)
 	if PC.db.options.dynamicIconsEnabled then
 		local edgeFrac = math.min(1, math.abs(diff) / (fov / 2))
 		local minScale = PC.db.options.dynamicIconsScale
 		local minFade = PC.db.options.dynamicIconsFade
-		icon:SetScale(1 - edgeFrac * (1 - minScale))
+		local baseSize = icon:GetWidth()
+		if baseSize and baseSize > 0 then
+			local size = baseSize * (1 - edgeFrac * (1 - minScale))
+			icon:SetSize(size, size)
+		end
 		icon:SetAlpha(1 - edgeFrac * (1 - minFade))
 	else
-		icon:SetScale(1)
 		icon:SetAlpha(1)
 	end
 end
