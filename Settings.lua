@@ -82,8 +82,15 @@ local COMPASS_SLIDERS = {
 	{ key = "compassLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "compassLocationRadius", label = "Auction house/bank/mailbox/innkeeper show distance", min = 50, max = 1000, steps = 38, round = true, format = YardText },
 	{ key = "compassIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
-	{ key = "dynamicIconsScale", label = "Dynamic icon scale at edge", min = 0, max = 1, steps = 20 },
-	{ key = "dynamicIconsFade", label = "Dynamic icon fade at edge", min = 0, max = 1, steps = 20 },
+}
+
+-- Built inline right under the "Dynamic icons" checkbox (see BuildPage),
+-- not in the generic COMPASS_SLIDERS list below -- these two only make
+-- sense right next to the toggle that controls them, not buried at the
+-- bottom of an unrelated slider block.
+local DYNAMIC_ICON_SLIDERS = {
+	{ key = "dynamicIconsScale", label = "Scale at edge of HUD", min = 0, max = 1, steps = 20 },
+	{ key = "dynamicIconsFade", label = "Fade at edge of HUD", min = 0, max = 1, steps = 20 },
 }
 
 local MAP_SLIDERS = {
@@ -97,6 +104,7 @@ local ROW_SPACING = 30
 local checkboxes = {}
 local colorSwatches = {}
 local sliderSyncs = {}
+local dynamicIconSliders = {} -- the two MinimalSliderWithSteppersTemplate frames under "Dynamic icons"
 local category
 
 local function GetValue(option)
@@ -193,6 +201,24 @@ local function BuildSlider(canvas, option, x, y)
 	return slider
 end
 
+-- Greys out (rather than hides) the two Dynamic Icon sliders when the
+-- toggle above them is off -- this canvas lays out every row at a fixed y
+-- computed once in BuildPage, so hiding them would leave either a gap or
+-- need a full reflow of everything below; disabling in place is the
+-- simpler, consistent-with-the-rest-of-this-file option. .Slider/.Back/
+-- .Forward + :SetAlpha() is MinimalSliderWithSteppersTemplate's own real,
+-- confirmed disable pattern (QuestTogether's SetAudioSliderEnabled does
+-- this exact thing on this client), not guessed.
+local function updateDynamicIconSlidersEnabled()
+	local enabled = PC.db.options.dynamicIconsEnabled and true or false
+	for _, slider in ipairs(dynamicIconSliders) do
+		slider.Slider:SetEnabled(enabled)
+		slider.Back:SetEnabled(enabled)
+		slider.Forward:SetEnabled(enabled)
+		slider:SetAlpha(enabled and 1 or 0.5)
+	end
+end
+
 local function BuildSectionHeader(parent, text, x, y)
 	local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	header:SetPoint("TOPLEFT", x, y)
@@ -242,8 +268,19 @@ local function BuildPage(canvas)
 	BuildSectionHeader(content, "Compass", 16, y)
 	y = y - 26
 	for _, option in ipairs(COMPASS_OPTIONS) do
-		checkboxes[option] = BuildCheckbox(content, option, 16, y)
+		local box = BuildCheckbox(content, option, 16, y)
+		checkboxes[option] = box
 		y = y - ROW_SPACING
+		if option.key == "dynamicIconsEnabled" then
+			-- Indented under the toggle that controls them, not buried at
+			-- the bottom of the unrelated COMPASS_SLIDERS block.
+			box:HookScript("OnClick", updateDynamicIconSlidersEnabled)
+			for _, sliderOption in ipairs(DYNAMIC_ICON_SLIDERS) do
+				local slider = BuildSlider(content, sliderOption, 32, y)
+				dynamicIconSliders[#dynamicIconSliders + 1] = slider
+				y = y - ROW_SPACING * 2
+			end
+		end
 	end
 	y = y - 10
 	for _, option in ipairs(COMPASS_COLORS) do
@@ -275,6 +312,7 @@ local function BuildPage(canvas)
 		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end
 		for _, applyCurrent in pairs(colorSwatches) do applyCurrent() end
 		for _, applyCurrentSlider in pairs(sliderSyncs) do applyCurrentSlider() end
+		updateDynamicIconSlidersEnabled()
 	end)
 end
 
