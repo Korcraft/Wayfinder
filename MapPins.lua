@@ -39,7 +39,7 @@ local AUCTIONEER_COLOR = { 0.64, 0.21, 0.93 }
 local MAILBOX_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Mailbox.png"
 local BANK_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Bank.png"
 local INNKEEPER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Innkeeper.png"
-local INNKEEPER_COLOR = { 0.9, 0.15, 0.15 }
+local INNKEEPER_COLOR = { 0.25, 0.65, 1.0 } -- "hearthstone blue"
 
 -- ---------------------------------------------------------------------------
 -- Rename dialog for permanent waypoints' name tags (double-click to open).
