@@ -14,6 +14,7 @@ PartyTracker.lua
 Quests.lua
 FlightPoints.lua
 Locations.lua
+Corpse.lua
 POI.lua
 IconStyle.lua
 MapPins.lua

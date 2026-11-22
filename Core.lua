@@ -44,6 +44,10 @@ local DEFAULTS = {
 		showMailboxMap = true,
 		showInnkeeperCompass = true,
 		showInnkeeperMap = true,
+		showCorpseCompass = true,
+		showCorpseMap = true,
+		compassCorpseIconSize = 22, -- pixels
+		mapCorpseIconSize = 20, -- pixels
 		showPOI = true,
 		compassPartyIconDots = false, -- false = real portraits, true = flat class-color dots
 		mapPartyIconDots = false,
@@ -156,6 +160,7 @@ eventFrame:SetScript("OnEvent", function(_, event, addonName)
 		if PC.Quests and PC.Quests.Init then PC.Quests.Init() end
 		if PC.FlightPoints and PC.FlightPoints.Init then PC.FlightPoints.Init() end
 		if PC.Locations and PC.Locations.Init then PC.Locations.Init() end
+		if PC.Corpse and PC.Corpse.Init then PC.Corpse.Init() end
 		if PC.MapPins and PC.MapPins.Init then PC.MapPins.Init() end
 		if PC.Compass and PC.Compass.Init then PC.Compass.Init() end
 		if PC.Settings and PC.Settings.Init then PC.Settings.Init() end
@@ -185,6 +190,7 @@ local function printHelp()
 	print("  /wf questcheck     - print exactly why quests are/aren't showing on the compass")
 	print("  /wf flightcheck    - print exactly what flight points are returned for your current zone")
 	print("  /wf locationscheck - print exactly what AH/bank/mailbox data exists for your current zone")
+	print("  /wf corpsecheck    - print exactly what's tracked for your own corpse's location")
 end
 
 local function toggleOption(key, label)
@@ -277,6 +283,8 @@ SlashCmdList.WAYFINDER = function(msg)
 		if PC.FlightPoints then PC.FlightPoints.Debug() end
 	elseif cmd == "locationscheck" then
 		if PC.Locations then PC.Locations.Debug() end
+	elseif cmd == "corpsecheck" then
+		if PC.Corpse then PC.Corpse.Debug() end
 	else
 		printHelp()
 	end

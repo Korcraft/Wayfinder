@@ -41,6 +41,8 @@ local COMPASS_OPTIONS = {
 			.. "cities have several mailboxes, so showing all of them would be worse clutter than any other marker." },
 	{ key = "showInnkeeperCompass", label = "Show innkeepers",
 		help = "Shows the innkeeper on the compass, same proximity-radius rule as the auction house." },
+	{ key = "showCorpseCompass", label = "Show your corpse",
+		help = "Shows a bearing icon pointing to your own corpse on the compass while you're a ghost." },
 	{ key = "dynamicIconsEnabled", label = "Dynamic icons",
 		help = "Icons shrink and fade the further they are from dead-center on the compass, down to the scale/fade "
 			.. "floors set by the two sliders below once an icon reaches the exact edge of the field of view." },
@@ -63,6 +65,8 @@ local MAP_OPTIONS = {
 			.. "room to show all of them, not just the nearest." },
 	{ key = "showInnkeeperMap", label = "Show innkeepers",
 		help = "Shows the innkeeper in your current zone on the world map." },
+	{ key = "showCorpseMap", label = "Show your corpse",
+		help = "Shows a pin for your own corpse on the world map while you're a ghost." },
 }
 
 local COMPASS_COLORS = {
@@ -82,6 +86,7 @@ local COMPASS_SLIDERS = {
 	{ key = "compassLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "compassLocationRadius", label = "Auction house/bank/mailbox/innkeeper show distance", min = 50, max = 1000, steps = 38, round = true, format = YardText },
 	{ key = "compassIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "compassCorpseIconSize", label = "Corpse icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
 -- Built inline right under the "Dynamic icons" checkbox (see BuildPage),
@@ -98,6 +103,7 @@ local MAP_SLIDERS = {
 	{ key = "mapFlightIconSize", label = "Flight point icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "mapLocationIconSize", label = "Auction house/bank/mailbox/innkeeper icon size", min = 10, max = 40, steps = 30, round = true },
 	{ key = "mapIconSize", label = "Waypoint icon size", min = 10, max = 40, steps = 30, round = true },
+	{ key = "mapCorpseIconSize", label = "Corpse icon size", min = 10, max = 40, steps = 30, round = true },
 }
 
 local ROW_SPACING = 30

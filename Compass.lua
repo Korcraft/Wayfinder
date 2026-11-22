@@ -50,6 +50,12 @@ local BANK_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Bank.png"
 local INNKEEPER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Innkeeper.png"
 local INNKEEPER_COLOR = { 0.25, 0.65, 1.0 } -- "hearthstone blue"
 
+-- Your own corpse, while you're a ghost -- see Corpse.lua for how its
+-- position is found. White alpha mask (same convention as every other
+-- location icon), tinted brown to match the classic WoW map graveyard icon.
+local CORPSE_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Corpse.png"
+local CORPSE_COLOR = { 0.55, 0.38, 0.22 }
+
 local CARDINALS = {
 	{ 0, "N" }, { 45, "NE" }, { 90, "E" }, { 135, "SE" },
 	{ 180, "S" }, { 225, "SW" }, { 270, "W" }, { 315, "NW" },
@@ -370,6 +376,7 @@ local auctioneerPool, acquireAuctioneer = makeLocationPool()
 local bankPool, acquireBank = makeLocationPool()
 local mailboxPool, acquireMailbox = makeLocationPool()
 local innkeeperPool, acquireInnkeeper = makeLocationPool()
+local corpsePool, acquireCorpse = makeLocationPool()
 local poiPool, acquirePoi = makeSwatchPool()
 local pingPool, acquirePing = makeSwatchPool()
 
@@ -556,6 +563,7 @@ local function updateCompass()
 		for i = 1, #bankPool do bankPool[i]:Hide() end
 		for i = 1, #mailboxPool do mailboxPool[i]:Hide() end
 		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
+		for i = 1, #corpsePool do corpsePool[i]:Hide() end
 		if questDistanceText then questDistanceText:Hide() end
 		return
 	end
@@ -849,6 +857,26 @@ local function updateCompass()
 			end, mapWidth, mapHeight)
 	else
 		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
+	end
+
+	-- Your own corpse -- only ever relevant while you're a ghost, and only
+	-- shown here when it resolves on this SAME map (see Corpse.lua -- it can
+	-- resolve on a parent/continent map instead, which the world map handles
+	-- fine via its own zone-scoped pin, but a precise bearing on this compass
+	-- strip needs the corpse and the player on the same map).
+	if PC.db.options.showCorpseCompass then
+		local corpseMapID, cx, cy = PC.Corpse.GetPosition()
+		local corpseList = (corpseMapID == uiMapID) and { { position = { x = cx, y = cy } } } or {}
+		renderBearingIcons(corpsePool, acquireCorpse, corpseList, px, py, heading, width, fov, iconY,
+			function(icon, item)
+				local size = PC.db.options.compassCorpseIconSize
+				icon:SetSize(size, size)
+				icon.bg:SetTexture(CORPSE_TEXTURE)
+				icon.bg:SetVertexColor(CORPSE_COLOR[1], CORPSE_COLOR[2], CORPSE_COLOR[3], 1)
+				icon.tooltipText = "Your corpse"
+			end, mapWidth, mapHeight)
+	else
+		for i = 1, #corpsePool do corpsePool[i]:Hide() end
 	end
 
 	-- Live party member positions -- shown at ALL times regardless of zone or

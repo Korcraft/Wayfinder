@@ -40,6 +40,8 @@ local MAILBOX_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Mailbox.png"
 local BANK_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Bank.png"
 local INNKEEPER_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Innkeeper.png"
 local INNKEEPER_COLOR = { 0.25, 0.65, 1.0 } -- "hearthstone blue"
+local CORPSE_TEXTURE = "Interface/AddOns/Wayfinder/Textures/Corpse.png"
+local CORPSE_COLOR = { 0.55, 0.38, 0.22 }
 
 -- ---------------------------------------------------------------------------
 -- Rename dialog for permanent waypoints' name tags (double-click to open).
@@ -400,6 +402,7 @@ local beginAuctioneerPins, acquireAuctioneerPin, endAuctioneerPins = makeLocatio
 local beginBankPins, acquireBankPin, endBankPins = makeLocationPinPool()
 local beginMailboxPins, acquireMailboxPin, endMailboxPins = makeLocationPinPool()
 local beginInnkeeperPins, acquireInnkeeperPin, endInnkeeperPins = makeLocationPinPool()
+local beginCorpsePins, acquireCorpsePin, endCorpsePins = makeLocationPinPool()
 
 local function placePin(pin, canvas, width, height, x, y)
 	pin:ClearAllPoints()
@@ -622,6 +625,24 @@ function MapPins.Refresh()
 		end
 	end
 	endInnkeeperPins()
+
+	-- Your own corpse -- only ever relevant while you're a ghost. Same
+	-- zone-scoped rule as everything else here (see Corpse.lua for how its
+	-- position, possibly on a parent/continent map, is resolved).
+	beginCorpsePins()
+	if PC.db.options.showCorpseMap then
+		local corpseMapID, cx, cy = PC.Corpse.GetPosition()
+		if corpseMapID == shownMapID then
+			local pin = acquireCorpsePin()
+			local sz = PC.db.options.mapCorpseIconSize
+			pin:SetSize(sz, sz)
+			placePin(pin, canvas, width, height, cx, cy)
+			pin.tooltipTitle = "Your corpse"
+			pin.bg:SetTexture(CORPSE_TEXTURE)
+			pin.bg:SetVertexColor(CORPSE_COLOR[1], CORPSE_COLOR[2], CORPSE_COLOR[3], 1)
+		end
+	end
+	endCorpsePins()
 end
 
 local function setupMapClickGestures()

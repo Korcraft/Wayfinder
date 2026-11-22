@@ -10,6 +10,7 @@ An FPS-style compass strip across the top of the screen, scrolling cardinal lett
 - **Quest objectives** — every quest Blizzard attached position data to in your current zone. If your focused (super-tracked) quest is somewhere else, the compass shows its zone name instead of nothing — and if it's on the other continent, a quest icon points due west or east toward it, plus a live distance readout in yards once you're in the right zone
 - **Flight points** — grey boot if you've already discovered it, green if you haven't
 - **Auction houses, banks, mailboxes, innkeepers** — shown once you're within a configurable distance, since these are permanent fixtures in nearly every zone (mailboxes show only the nearest one, to avoid clutter in cities with several)
+- **Your own corpse** — a gravestone icon pointing the way back during a corpse run, visible only while you're a ghost
 - **Your shared waypoints** — see below
 
 Width, height, field of view, colors, and icon sizes are all configurable per element. An optional **Dynamic Icons** setting shrinks and fades icons the further they are from dead-center, down to a configurable floor at the exact edge of the field of view.
@@ -46,7 +47,7 @@ A full settings panel under **Options > AddOns > Wayfinder**, with independent C
 /wf list           - list every active waypoint, yours and your party's
 ```
 
-A few `/wf ...check` commands print diagnostic info for quests/flight points/locations if something doesn't seem to be showing up right.
+A few `/wf ...check` commands print diagnostic info for quests/flight points/locations/your corpse if something doesn't seem to be showing up right.
 
 ## Install
 
