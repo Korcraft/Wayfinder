@@ -162,6 +162,8 @@ end
 -- units, so shrinking it that way silently drags the icon off its intended
 -- bearing position (worse the further from center it is); resizing leaves
 -- the anchor point itself untouched.
+local PORTRAIT_BORDER_PADDING = 4 -- how much wider the class-color outline is than the portrait
+
 local function applyDynamicIcon(icon, diff, fov)
 	if PC.db.options.dynamicIconsEnabled then
 		local edgeFrac = math.min(1, math.abs(diff) / (fov / 2))
@@ -169,8 +171,14 @@ local function applyDynamicIcon(icon, diff, fov)
 		local minFade = PC.db.options.dynamicIconsFade
 		local baseSize = icon:GetWidth()
 		if baseSize and baseSize > 0 then
-			local size = baseSize * (1 - edgeFrac * (1 - minScale))
+			local scale = 1 - edgeFrac * (1 - minScale)
+			local size = baseSize * scale
 			icon:SetSize(size, size)
+			-- The outline has its own explicit size, so it must shrink too.
+			if icon.border then
+				local borderSize = (baseSize + PORTRAIT_BORDER_PADDING) * scale
+				icon.border:SetSize(borderSize, borderSize)
+			end
 		end
 		icon:SetAlpha(1 - edgeFrac * (1 - minFade))
 	else
@@ -412,7 +420,7 @@ local function applyPortrait(icon, unit, alpha)
 	if icon.border then
 		icon.border:ClearAllPoints()
 		icon.border:SetPoint("CENTER", icon, "CENTER")
-		icon.border:SetSize(icon:GetWidth() + 4, icon:GetHeight() + 4)
+		icon.border:SetSize(icon:GetWidth() + PORTRAIT_BORDER_PADDING, icon:GetHeight() + PORTRAIT_BORDER_PADDING)
 		icon.border:SetVertexColor(c[1], c[2], c[3], alpha)
 	end
 
