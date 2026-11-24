@@ -186,7 +186,7 @@ local function printHelp()
 	print("  /wf settings       - open the Wayfinder settings panel (also under Options > AddOns)")
 	print("  /wf compass        - toggle the HUD compass")
 	print("  /wf quests         - toggle showing quest objectives")
-	print("  /wf facingcheck    - print the raw GetPlayerFacing() value, for calibrating the compass")
+	print("  /wf facingcheck    - 10-second live test of which facing sources work here (turn while it runs)")
 	print("  /wf questcheck     - print exactly why quests are/aren't showing on the compass")
 	print("  /wf flightcheck    - print exactly what flight points are returned for your current zone")
 	print("  /wf locationscheck - print exactly what AH/bank/mailbox data exists for your current zone")
@@ -274,9 +274,7 @@ SlashCmdList.WAYFINDER = function(msg)
 	elseif cmd == "settings" then
 		if PC.Settings then PC.Settings.Open() end
 	elseif cmd == "facingcheck" then
-		local raw = GetPlayerFacing() or 0
-		print(string.format("|cff33ff99Wayfinder|r GetPlayerFacing() = %.4f radians = %.1f degrees",
-			raw, raw * 180 / math.pi))
+		if PC.Compass then PC.Compass.FacingProbe() end
 	elseif cmd == "questcheck" then
 		if PC.Quests then PC.Quests.Debug() end
 	elseif cmd == "flightcheck" then

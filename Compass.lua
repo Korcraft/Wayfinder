@@ -487,7 +487,9 @@ end
 -- this clean "skip this frame" path.
 local function facingDegrees()
 	local facing = GetPlayerFacing()
-	if facing == nil or (issecretvalue and issecretvalue(facing)) then return nil end
+	-- Secret check must come first: even an == nil test may throw on a secret.
+	if issecretvalue and issecretvalue(facing) then return nil end
+	if facing == nil then return nil end
 	return (360 - (facing * 180 / math.pi)) % 360
 end
 
@@ -509,12 +511,43 @@ local function throttled(key, fetch)
 	return entry.value
 end
 
+-- Clears every bearing icon and the quest distance text. Used whenever the
+-- game withholds heading or position (e.g. inside dungeons), so icons from
+-- the outside world can't stay frozen on the HUD at meaningless bearings.
+local ALL_ICON_POOLS = {
+	wpPool, partyPool, questPool, flightPool, auctioneerPool,
+	bankPool, mailboxPool, innkeeperPool, corpsePool, poiPool, pingPool,
+}
+local function hideAllIcons()
+	for _, pool in ipairs(ALL_ICON_POOLS) do
+		for i = 1, #pool do pool[i]:Hide() end
+	end
+	if questDistanceText then questDistanceText:Hide() end
+end
+
+-- Confirmed live in a party dungeon: GetPlayerFacing, map/world position (for
+-- you and party) and all 53 minimap textures with Rotate Minimap on give
+-- nothing usable. So show that plainly instead of a stale or empty strip.
+local noHeadingText
+local function showNoHeading()
+	hideAllIcons()
+	for i = 1, #markers do markers[i]:Hide() end
+	for i = 1, #ticks do ticks[i]:Hide() end
+	if centerTick then centerTick:Hide() end
+	if noHeadingText then noHeadingText:Show() end
+end
+
 local function updateCompass()
 	if not frame or not frame:IsShown() then return end
 	local width = PC.db.options.compassWidth
 	local fov = PC.db.options.fieldOfView
 	local heading = facingDegrees()
-	if not heading then return end -- can't compute right now -- retried next frame automatically
+	if not heading then -- can't compute right now -- retried next frame automatically
+		showNoHeading()
+		return
+	end
+	if noHeadingText then noHeadingText:Hide() end
+	if centerTick then centerTick:Show() end
 	local iconY = Compass.IconYOffset()
 
 	-- Cardinal letters
@@ -563,16 +596,7 @@ local function updateCompass()
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	local myPos = uiMapID and C_Map.GetPlayerMapPosition(uiMapID, "player")
 	if not (uiMapID and myPos) then
-		for i = 1, #wpPool do wpPool[i]:Hide() end
-		for i = 1, #partyPool do partyPool[i]:Hide() end
-		for i = 1, #questPool do questPool[i]:Hide() end
-		for i = 1, #flightPool do flightPool[i]:Hide() end
-		for i = 1, #auctioneerPool do auctioneerPool[i]:Hide() end
-		for i = 1, #bankPool do bankPool[i]:Hide() end
-		for i = 1, #mailboxPool do mailboxPool[i]:Hide() end
-		for i = 1, #innkeeperPool do innkeeperPool[i]:Hide() end
-		for i = 1, #corpsePool do corpsePool[i]:Hide() end
-		if questDistanceText then questDistanceText:Hide() end
+		hideAllIcons()
 		return
 	end
 	local px, py = myPos:GetXY()
@@ -945,6 +969,173 @@ local function updateCompass()
 	end
 end
 
+-- /wf facingcheck -- a live test for instances, where the compass freezes
+-- because facingDegrees() gets no usable number. Never compares, formats or
+-- does math on a possibly-secret value: it only counts plain readable changes
+-- and hands the raw value to a widget setter, which can accept secrets. The
+-- on-screen arrow answers "can a widget still render the real heading here?"
+local probeFrame, probeArrow
+
+local function isSecret(v)
+	return issecretvalue and issecretvalue(v) or false
+end
+
+local function describeValue(v)
+	if isSecret(v) then return "SECRET" end
+	if v == nil then return "nil" end
+	return tostring(v)
+end
+
+-- Tracks one source across the test: last kind seen + how many plain changes.
+local function sampleSource(state, v)
+	if isSecret(v) then
+		state.sawSecret = true
+	elseif v == nil then
+		state.sawNil = true
+	else
+		if state.last ~= nil and state.last ~= v then state.changes = state.changes + 1 end
+		state.last = v
+	end
+end
+
+local function sourceSummary(state)
+	return string.format("plain changes=%d, nil=%s, secret=%s",
+		state.changes, tostring(state.sawNil or false), tostring(state.sawSecret or false))
+end
+
+function Compass.FacingProbe()
+	if probeFrame and probeFrame:IsShown() then
+		print("|cff33ff99Wayfinder|r facing test is already running.")
+		return
+	end
+	if not probeFrame then
+		probeFrame = CreateFrame("Frame", nil, UIParent)
+		probeFrame:SetSize(64, 64)
+		probeFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
+		probeFrame:SetFrameStrata("HIGH")
+		probeArrow = probeFrame:CreateTexture(nil, "OVERLAY")
+		probeArrow:SetAllPoints()
+		probeArrow:SetTexture("Interface\\Minimap\\MinimapArrow")
+	end
+
+	local inInstance, instanceType = IsInInstance()
+	local okFirst, first = pcall(GetPlayerFacing)
+	print("|cff33ff99Wayfinder|r facing test: TURN YOUR CHARACTER for 10 seconds. Your minimap will rotate, then go back to normal.")
+	print(string.format("  instance=%s (%s)  GetPlayerFacing now=%s",
+		tostring(inInstance), tostring(instanceType), okFirst and describeValue(first) or "ERROR"))
+
+	local facingState, readbackState = { changes = 0 }, { changes = 0 }
+	local setterAccepted, setterRejected = 0, 0
+	local remaining = 10
+
+	-- Rotate Minimap is switched on only for the test. Restored on finish and
+	-- on logout/reload, so an interrupted test can't leave it changed.
+	local originalRotate = GetCVar("rotateMinimap")
+	local function restoreRotate()
+		if originalRotate ~= nil then
+			pcall(SetCVar, "rotateMinimap", originalRotate)
+			originalRotate = nil
+		end
+		probeFrame:UnregisterEvent("PLAYER_LOGOUT")
+	end
+	probeFrame:RegisterEvent("PLAYER_LOGOUT")
+	probeFrame:SetScript("OnEvent", restoreRotate)
+	pcall(SetCVar, "rotateMinimap", "1")
+
+	-- Every texture on the minimap is a candidate: whichever one follows your
+	-- turning (by rotation or by texture coordinates) is a usable heading.
+	local candidates, seen = {}, {}
+	local function addTexture(region, label)
+		if region and not seen[region] and region.GetObjectType and region:GetObjectType() == "Texture" then
+			seen[region] = true
+			local name = region.GetDebugName and region:GetDebugName() or label
+			candidates[#candidates + 1] = { region = region, name = name, rot = { changes = 0 }, coord = { changes = 0 } }
+		end
+	end
+	local function scanFrame(parent, label, depth)
+		if not parent then return end
+		for i, region in ipairs({ parent:GetRegions() }) do addTexture(region, label .. "#" .. i) end
+		if depth > 0 then
+			for i, child in ipairs({ parent:GetChildren() }) do scanFrame(child, label .. "." .. i, depth - 1) end
+		end
+	end
+	addTexture(_G.MinimapCompassTexture, "MinimapCompassTexture")
+	pcall(scanFrame, _G.Minimap, "Minimap", 1)
+	pcall(scanFrame, _G.MinimapBackdrop, "MinimapBackdrop", 1)
+	pcall(scanFrame, _G.MinimapCluster, "MinimapCluster", 1)
+
+	local function positionState(unit)
+		local okMap, mapID = pcall(C_Map.GetBestMapForUnit, unit)
+		local mapResult = "nil"
+		if okMap and isSecret(mapID) then
+			mapResult = "SECRET"
+		elseif okMap and mapID then
+			local okPos, pos = pcall(C_Map.GetPlayerMapPosition, mapID, unit)
+			if okPos and isSecret(pos) then mapResult = "SECRET"
+			elseif okPos and pos then mapResult = "yes" end
+		end
+		local okWorld, worldY = pcall(UnitPosition, unit)
+		local worldResult = "nil"
+		if okWorld and isSecret(worldY) then worldResult = "SECRET"
+		elseif okWorld and worldY then worldResult = "yes" end
+		return mapResult .. "/" .. worldResult
+	end
+
+	probeFrame:SetScript("OnUpdate", function(self, elapsed)
+		local ok, facing = pcall(GetPlayerFacing)
+		if ok then sampleSource(facingState, facing) end
+		if ok and (isSecret(facing) or facing ~= nil) then
+			if pcall(probeArrow.SetRotation, probeArrow, facing) then
+				setterAccepted = setterAccepted + 1
+				local okRead, readback = pcall(probeArrow.GetRotation, probeArrow)
+				if okRead then sampleSource(readbackState, readback) end
+			else
+				setterRejected = setterRejected + 1
+			end
+		end
+		for _, c in ipairs(candidates) do
+			if c.region.GetRotation then
+				local okRot, rotation = pcall(c.region.GetRotation, c.region)
+				if okRot then sampleSource(c.rot, rotation) end
+			end
+			if c.region.GetTexCoord then
+				local okCoord, coord = pcall(c.region.GetTexCoord, c.region)
+				if okCoord then sampleSource(c.coord, coord) end
+			end
+		end
+
+		remaining = remaining - elapsed
+		if remaining <= 0 then
+			self:SetScript("OnUpdate", nil)
+			self:Hide()
+			restoreRotate()
+			print("|cff33ff99Wayfinder|r facing test results:")
+			print("  GetPlayerFacing: " .. sourceSummary(facingState))
+			print(string.format("  arrow SetRotation: accepted=%d rejected=%d", setterAccepted, setterRejected))
+
+			local moving, secretCount = 0, 0
+			for _, c in ipairs(candidates) do
+				if c.rot.sawSecret or c.coord.sawSecret then secretCount = secretCount + 1 end
+				if c.rot.changes > 0 or c.coord.changes > 0 then
+					moving = moving + 1
+					if moving <= 4 then
+						print(string.format("  MOVING: %s rot=%d coord=%d", tostring(c.name), c.rot.changes, c.coord.changes))
+					end
+				end
+			end
+			print(string.format("  minimap textures: checked=%d moving=%d secret=%d", #candidates, moving, secretCount))
+
+			local parts = { "you=" .. positionState("player") }
+			for i = 1, 4 do
+				local unit = "party" .. i
+				if UnitExists(unit) then parts[#parts + 1] = "p" .. i .. "=" .. positionState(unit) end
+			end
+			print("  positions (map/world): " .. table.concat(parts, " "))
+		end
+	end)
+	probeFrame:Show()
+end
+
 function Compass.Init()
 	-- Size/height is applied below via Compass.Refresh() (from
 	-- compassWidth/compassHeight, both real settings now) -- default 64
@@ -987,6 +1178,12 @@ function Compass.Init()
 	questDistanceText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	questDistanceText:SetPoint("TOP", bgBottom, "BOTTOM", 0, -2)
 	questDistanceText:Hide()
+
+	noHeadingText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	noHeadingText:SetPoint("CENTER", frame, "CENTER", 0, 0)
+	noHeadingText:SetText("Compass unavailable in this instance")
+	noHeadingText:SetTextColor(0.8, 0.8, 0.8)
+	noHeadingText:Hide()
 
 	-- Runs every frame, not throttled: the math here (a handful of trig calls
 	-- over a dozen-ish markers) is cheap, and anything coarser than ~60fps
