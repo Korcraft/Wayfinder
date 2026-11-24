@@ -3,7 +3,7 @@
 ## Title: Wayfinder
 ## Notes: Shared party waypoints, map pings, and a directional HUD compass.
 ## Author: Korcraft
-## Version: 1.6.2
+## Version: 1.6.3
 ## SavedVariables: WayfinderDB
 ## X-License: GPLv3
 
