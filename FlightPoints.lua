@@ -119,6 +119,8 @@ local function recordFlightMap()
 	end
 end
 
+local MAX_NODES_IN_ONE_ZONE = 8
+
 -- Every flight point on the CURRENT zone's map, found or not -- see
 -- Compass.lua/MapPins.lua for how showFlightPathsCompass/showFlightPathsMap
 -- separately gate whether these actually get drawn.
@@ -128,6 +130,15 @@ function FlightPoints.GetAll()
 
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	if not uiMapID then return list end
+
+	-- The bounds check below only works on a zone-sized map. If the game
+	-- reports a continent or world map as your location, every flight point
+	-- on it lands inside 0-1, so show none rather than the whole network.
+	local mapInfo = C_Map.GetMapInfo(uiMapID)
+	local zoneType = (Enum and Enum.UIMapType and Enum.UIMapType.Zone) or 3
+	if mapInfo and type(mapInfo.mapType) == "number" and mapInfo.mapType < zoneType then
+		return list
+	end
 
 	local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, uiMapID)
 	if not ok or type(nodes) ~= "table" then return list end
@@ -157,6 +168,9 @@ function FlightPoints.GetAll()
 			end
 		end
 	end
+
+	-- Safety net for any other oversized map: no real zone has this many.
+	if #list > MAX_NODES_IN_ONE_ZONE then return {} end
 	return list
 end
 
