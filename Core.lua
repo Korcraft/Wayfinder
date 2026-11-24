@@ -189,6 +189,7 @@ local function printHelp()
 	print("  /wf facingcheck    - 10-second live test of which facing sources work here (turn while it runs)")
 	print("  /wf questcheck     - print exactly why quests are/aren't showing on the compass")
 	print("  /wf flightcheck    - print exactly what flight points are returned for your current zone")
+	print("  /wf flightzones    - test the flight point zone filter on every zone of every continent")
 	print("  /wf locationscheck - print exactly what AH/bank/mailbox data exists for your current zone")
 	print("  /wf corpsecheck    - print exactly what's tracked for your own corpse's location")
 end
@@ -277,6 +278,8 @@ SlashCmdList.WAYFINDER = function(msg)
 		if PC.Compass then PC.Compass.FacingProbe() end
 	elseif cmd == "questcheck" then
 		if PC.Quests then PC.Quests.Debug() end
+	elseif cmd == "flightzones" then
+		if PC.FlightPoints then PC.FlightPoints.ZoneReport() end
 	elseif cmd == "flightcheck" then
 		if PC.FlightPoints then PC.FlightPoints.Debug() end
 	elseif cmd == "locationscheck" then

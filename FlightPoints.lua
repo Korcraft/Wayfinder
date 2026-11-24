@@ -140,12 +140,87 @@ function FlightPoints.GetAll()
 		return list
 	end
 
+	local kept = FlightPoints.NodesInMap(uiMapID)
+
+	-- Safety net for any other oversized map: no real zone has this many.
+	if #kept > MAX_NODES_IN_ONE_ZONE then return {} end
+	return kept
+end
+
+-- The continent a zone sits on, and the zone's rectangle on that continent's
+-- map (minX, maxX, minY, maxY), or nil.
+local continentCache = {}
+local function zoneOnContinent(uiMapID)
+	local cached = continentCache[uiMapID]
+	if cached then return cached ~= false and cached or nil end
+	local CONTINENT = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or 2
+	local result = false
+	local mapID = uiMapID
+	for _ = 1, 10 do
+		local info = mapID and C_Map.GetMapInfo(mapID)
+		if not info then break end
+		if info.mapType == CONTINENT then
+			if C_Map.GetMapRectOnMap then
+				local ok, minX, maxX, minY, maxY = pcall(C_Map.GetMapRectOnMap, uiMapID, mapID)
+				if ok and type(minX) == "number" and type(maxX) == "number" and maxX > minX
+					and type(minY) == "number" and type(maxY) == "number" and maxY > minY then
+					result = { continent = mapID, minX = minX, maxX = maxX, minY = minY, maxY = maxY }
+				end
+			end
+			break
+		end
+		mapID = info.parentMapID
+	end
+	continentCache[uiMapID] = result
+	return result or nil
+end
+
+-- Which zone the game says this zone-map point is really in, or nil if it
+-- can't tell. Same lookup the world map uses to highlight a zone on hover
+-- (and ForeverDungeonJournal uses on this client to find zone borders).
+local function zoneAtPoint(uiMapID, x, y)
+	local rect = zoneOnContinent(uiMapID)
+	if not (rect and C_Map.GetMapInfoAtPosition) then return nil end
+	local cx = rect.minX + x * (rect.maxX - rect.minX)
+	local cy = rect.minY + y * (rect.maxY - rect.minY)
+	local ok, info = pcall(C_Map.GetMapInfoAtPosition, rect.continent, cx, cy)
+	if ok and type(info) == "table" and type(info.mapID) == "number" then return info.mapID end
+	return nil
+end
+
+-- "Stormwind, Elwynn" belongs to Elwynn Forest and to Stormwind City: either
+-- part of the flight point's name starting the zone's name counts. Covers
+-- cities, whose flight point may sit on the surrounding zone's ground.
+local function nameMatchesZone(nodeName, zoneName)
+	if type(zoneName) ~= "string" or zoneName == "" then return false end
+	zoneName = zoneName:lower()
+	for part in nodeName:lower():gmatch("[^,]+") do
+		part = part:gsub("^%s+", ""):gsub("%s+$", "")
+		if part ~= "" and zoneName:find(part, 1, true) == 1 then return true end
+	end
+	return false
+end
+
+-- The flight points that belong to one zone, before the too-many cap. Works
+-- for any map ID, not just the one you're standing on, which is what lets
+-- /wf flightzones test another continent from afar. Also returns how many
+-- nodes the game handed back before filtering.
+--
+-- A zone map is a rectangle that overlaps its neighbors, so landing inside
+-- 0-1 isn't enough (confirmed: Darkshore's rectangle caught Moonglade and
+-- Felwood flight points). A "Place, Zone" name decides by itself. A name with
+-- no zone in it ("Moonglade") counts if the game says it's in this zone; if
+-- the game can't say, the old border check alone decides.
+function FlightPoints.NodesInMap(uiMapID)
+	local list = {}
 	local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, uiMapID)
-	if not ok or type(nodes) ~= "table" then return list end
+	if not ok or type(nodes) ~= "table" then return list, 0 end
+	local zoneInfo = C_Map.GetMapInfo(uiMapID)
+	local zoneName = zoneInfo and zoneInfo.name
 
 	-- See the file header -- GetTaxiNodesForMap doesn't zone-filter on this
-	-- client at all, so THIS bounds check is what actually restricts the
-	-- list to your current zone. Small margin for floating-point jitter
+	-- client at all. This bounds check is the first pass (inside the zone's
+	-- rectangle); the zone lookup below is the second. Small margin for floating-point jitter
 	-- right at the edge of the canvas; the real out-of-zone values seen via
 	-- /wf flightcheck were nowhere close to this margin (the nearest
 	-- genuinely-out-of-zone node was still 0.075 away from 0).
@@ -157,7 +232,21 @@ function FlightPoints.GetAll()
 		if type(node) == "table" and node.position and oursToSee(node.faction) then
 			local x, y = node.position.x, node.position.y
 			if (x == nil or y == nil) and node.position.GetXY then x, y = node.position:GetXY() end
-			if x and y and inBounds(x) and inBounds(y) and type(node.name) == "string" and node.name ~= "" then
+			local named = type(node.name) == "string" and node.name ~= ""
+				and not node.name:find("^zzOLD") -- retired leftovers in the game's own list
+			local belongs = false
+			if named and x and y and inBounds(x) and inBounds(y) then
+				if node.name:find(",", 1, true) then
+					-- "Place, Zone": the name says where it is. Trusted over the
+					-- lookup, which put Talrendis Point (Azshara, right on the
+					-- border) in Ashenvale.
+					belongs = nameMatchesZone(node.name, zoneName)
+				else
+					local actualZone = zoneAtPoint(uiMapID, x, y)
+					belongs = actualZone == nil or actualZone == uiMapID or nameMatchesZone(node.name, zoneName)
+				end
+			end
+			if belongs then
 				list[#list + 1] = {
 					nodeID = node.nodeID,
 					name = node.name,
@@ -169,9 +258,7 @@ function FlightPoints.GetAll()
 		end
 	end
 
-	-- Safety net for any other oversized map: no real zone has this many.
-	if #list > MAX_NODES_IN_ONE_ZONE then return {} end
-	return list
+	return list, #nodes
 end
 
 -- ---------------------------------------------------------------------------
@@ -261,7 +348,20 @@ function FlightPoints.Debug()
 	local uiMapID = C_Map.GetBestMapForUnit("player")
 	local mapInfo = uiMapID and C_Map.GetMapInfo(uiMapID)
 	add("current zone: " .. tostring(mapInfo and mapInfo.name) .. "  (uiMapID " .. tostring(uiMapID) .. ")")
+	add("map type: " .. tostring(mapInfo and mapInfo.mapType) .. "  (3 = zone, 2 = continent, 4 = dungeon)")
 	add("GetTaxiNodesForMap exists: " .. tostring(C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap ~= nil))
+
+	-- What Wayfinder actually hands the compass and map after its filters.
+	local okAll, drawn = pcall(FlightPoints.GetAll)
+	if okAll then
+		local names = {}
+		for _, fp in ipairs(drawn) do names[#names + 1] = fp.name end
+		add("Wayfinder draws " .. #drawn .. ": " .. (#names > 0 and table.concat(names, ", ") or "(none)"))
+	else
+		add("Wayfinder GetAll ERROR: " .. tostring(drawn))
+	end
+	add("compass setting=" .. tostring(PC.db.options.showFlightPathsCompass)
+		.. "  map setting=" .. tostring(PC.db.options.showFlightPathsMap))
 
 	if uiMapID and C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap then
 		local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, uiMapID)
@@ -279,6 +379,87 @@ function FlightPoints.Debug()
 
 	showCopyableText("Wayfinder flight debug", table.concat(lines, "\n"))
 	print("|cff33ff99Wayfinder|r flight debug window opened -- click inside it, Ctrl+A then Ctrl+C, then paste it back.")
+end
+
+-- Finds every continent by walking up from your current map to the world
+-- map and listing its continents. Falls back to the classic Kalimdor and
+-- Eastern Kingdoms map IDs if that walk finds nothing.
+local function allContinents()
+	local CONTINENT = (Enum and Enum.UIMapType and Enum.UIMapType.Continent) or 2
+	local WORLD = (Enum and Enum.UIMapType and Enum.UIMapType.World) or 1
+	local mapID = C_Map.GetBestMapForUnit("player")
+	for _ = 1, 10 do
+		local info = mapID and C_Map.GetMapInfo(mapID)
+		if not info then break end
+		if info.mapType == WORLD then
+			local ok, kids = pcall(C_Map.GetMapChildrenInfo, mapID, CONTINENT)
+			if ok and type(kids) == "table" and #kids > 0 then return kids end
+			break
+		end
+		mapID = info.parentMapID
+	end
+	local fallback = {}
+	for _, id in ipairs({ 1414, 1415 }) do
+		local info = C_Map.GetMapInfo(id)
+		if info then fallback[#fallback + 1] = info end
+	end
+	return fallback
+end
+
+-- /wf flightzones -- runs Wayfinder's zone filter on every zone of every
+-- continent from wherever you stand, so a continent can be tested without
+-- travelling there. OK = 1-8 points kept (what the compass would show),
+-- NONE = zero kept, TOO MANY = the cap would hide them all.
+function FlightPoints.ZoneReport()
+	local lines = {}
+	local function add(s) lines[#lines + 1] = s end
+	local ZONE = (Enum and Enum.UIMapType and Enum.UIMapType.Zone) or 3
+
+	if not (C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap and C_Map.GetMapChildrenInfo) then
+		add("Missing API: GetTaxiNodesForMap or GetMapChildrenInfo.")
+	else
+		local continents = allContinents()
+		if #continents == 0 then add("No continents found.") end
+		for _, continent in ipairs(continents) do
+			add(string.format("=== %s (uiMapID %s) ===", tostring(continent.name), tostring(continent.mapID)))
+			local ok, zones = pcall(C_Map.GetMapChildrenInfo, continent.mapID, ZONE)
+			if not ok or type(zones) ~= "table" then zones = {} end
+			table.sort(zones, function(a, b) return tostring(a.name) < tostring(b.name) end)
+			local sampleShown = false
+			for _, zone in ipairs(zones) do
+				local kept, raw = FlightPoints.NodesInMap(zone.mapID)
+				local verdict = (#kept == 0 and "NONE") or (#kept > MAX_NODES_IN_ONE_ZONE and "TOO MANY") or "OK"
+				local names = {}
+				for i, fp in ipairs(kept) do
+					if i <= 4 then names[#names + 1] = fp.name end
+				end
+				if #kept > 4 then names[#names + 1] = "..." end
+				add(string.format("%-8s %-24s map=%-5s game gave %-3d kept %-3d %s",
+					verdict, tostring(zone.name), tostring(zone.mapID), raw, #kept, table.concat(names, ", ")))
+
+				-- Raw positions for the first zone that keeps too many, so
+				-- the coordinate pattern behind the failure is visible.
+				if verdict == "TOO MANY" and not sampleShown then
+					sampleShown = true
+					local okN, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, zone.mapID)
+					if okN and type(nodes) == "table" then
+						for i, node in ipairs(nodes) do
+							if i > 12 then add("      ...") break end
+							local x, y = node.position and node.position.x, node.position and node.position.y
+							if (x == nil or y == nil) and node.position and node.position.GetXY then x, y = node.position:GetXY() end
+							add(string.format("      %-28s faction=%-4s x=%-8s y=%s", tostring(node.name),
+								tostring(node.faction),
+								type(x) == "number" and string.format("%.3f", x) or tostring(x),
+								type(y) == "number" and string.format("%.3f", y) or tostring(y)))
+						end
+					end
+				end
+			end
+			add("")
+		end
+	end
+
+	showCopyableText("Wayfinder flight zones", table.concat(lines, "\n"))
 end
 
 function FlightPoints.Init()
