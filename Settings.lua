@@ -107,11 +107,14 @@ local MAP_SLIDERS = {
 }
 
 local ROW_SPACING = 30
-local checkboxes = {}
-local colorSwatches = {}
-local sliderSyncs = {}
-local dynamicIconSliders = {} -- the two MinimalSliderWithSteppersTemplate frames under "Dynamic icons"
-local category
+local WINDOW_WIDTH, WINDOW_HEIGHT = 520, 640
+-- The page is built twice (standalone window and AddOns canvas), so these
+-- are plain lists covering the controls of both copies.
+local checkboxes = {}      -- { option = ..., box = ... }
+local colorSwatches = {}   -- functions that re-read a swatch's color
+local sliderSyncs = {}     -- functions that re-read a slider's value
+local dynamicIconSliders = {} -- the MinimalSliderWithSteppersTemplate frames under "Dynamic icons"
+local window
 
 local function GetValue(option)
 	return PC.db.options[option.key] and true or false
@@ -167,7 +170,7 @@ local function BuildColorSwatch(canvas, option, x, y)
 		ColorPickerFrame:SetupColorPickerAndShow(info)
 	end)
 
-	colorSwatches[option] = applyCurrent
+	colorSwatches[#colorSwatches + 1] = applyCurrent
 	return swatch
 end
 
@@ -203,7 +206,7 @@ local function BuildSlider(canvas, option, x, y)
 		if PC.Compass and PC.Compass.Refresh then PC.Compass.Refresh() end
 	end, canvas)
 
-	sliderSyncs[option] = function() slider:SetValue(PC.db.options[option.key]) end
+	sliderSyncs[#sliderSyncs + 1] = function() slider:SetValue(PC.db.options[option.key]) end
 	return slider
 end
 
@@ -254,14 +257,21 @@ end
 -- (scroll.ScrollBar vs scroll.scrollBar) differs on Forever builds, but
 -- that's only needed for restyling the scrollbar, not for scrolling
 -- itself to work, so it's not needed here.
-local function BuildPage(canvas)
-	local title = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
-	title:SetPoint("TOPLEFT", 16, -16)
-	title:SetText("Wayfinder")
+--
+-- Built twice, like Shady Business's settings: into the standalone window
+-- (/wf settings) and into Options > AddOns > Wayfinder. Both copies re-read
+-- every setting when shown, so they never disagree.
+local function syncAll()
+	for _, entry in ipairs(checkboxes) do entry.box:SetChecked(GetValue(entry.option)) end
+	for _, applyCurrent in ipairs(colorSwatches) do applyCurrent() end
+	for _, applyCurrentSlider in ipairs(sliderSyncs) do applyCurrentSlider() end
+	updateDynamicIconSlidersEnabled()
+end
 
-	local scroll = CreateFrame("ScrollFrame", nil, canvas, "UIPanelScrollFrameTemplate")
-	scroll:SetPoint("TOPLEFT", canvas, "TOPLEFT", 0, -48)
-	scroll:SetPoint("BOTTOMRIGHT", canvas, "BOTTOMRIGHT", -27, 0)
+local function BuildPage(container, scrollTop)
+	local scroll = CreateFrame("ScrollFrame", nil, container, "UIPanelScrollFrameTemplate")
+	scroll:SetPoint("TOPLEFT", container, "TOPLEFT", 0, scrollTop)
+	scroll:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -27, 4)
 
 	local content = CreateFrame("Frame", nil, scroll)
 	content:SetPoint("TOPLEFT")
@@ -275,7 +285,7 @@ local function BuildPage(canvas)
 	y = y - 26
 	for _, option in ipairs(COMPASS_OPTIONS) do
 		local box = BuildCheckbox(content, option, 16, y)
-		checkboxes[option] = box
+		checkboxes[#checkboxes + 1] = { option = option, box = box }
 		y = y - ROW_SPACING
 		if option.key == "dynamicIconsEnabled" then
 			-- Indented under the toggle that controls them, not buried at
@@ -303,7 +313,7 @@ local function BuildPage(canvas)
 	BuildSectionHeader(content, "Map", 16, y)
 	y = y - 26
 	for _, option in ipairs(MAP_OPTIONS) do
-		checkboxes[option] = BuildCheckbox(content, option, 16, y)
+		checkboxes[#checkboxes + 1] = { option = option, box = BuildCheckbox(content, option, 16, y) }
 		y = y - ROW_SPACING
 	end
 	y = y - 10
@@ -313,13 +323,32 @@ local function BuildPage(canvas)
 	end
 
 	content:SetHeight(-y + 16)
+	container:HookScript("OnShow", syncAll)
+end
 
-	canvas:SetScript("OnShow", function()
-		for option, box in pairs(checkboxes) do box:SetChecked(GetValue(option)) end
-		for _, applyCurrent in pairs(colorSwatches) do applyCurrent() end
-		for _, applyCurrentSlider in pairs(sliderSyncs) do applyCurrentSlider() end
-		updateDynamicIconSlidersEnabled()
-	end)
+-- Blizzard's standard window style (ButtonFrameTemplate: portrait, title
+-- bar, inset), the same one Shady Business uses on this client. Closing it
+-- just closes it -- unlike Blizzard's settings panel, whose close reopens
+-- the game menu.
+local function BuildWindow()
+	window = CreateFrame("Frame", "WayfinderSettings", UIParent, "ButtonFrameTemplate")
+	window:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+	window:SetTitle("Wayfinder")
+	window:SetPortraitToAsset("Interface\Icons\INV_Misc_Map_01")
+	window:SetPoint("CENTER")
+	window:SetFrameStrata("HIGH")
+	window:SetClampedToScreen(true)
+	window:SetMovable(true)
+	window:EnableMouse(true)
+	window:RegisterForDrag("LeftButton")
+	window:SetScript("OnDragStart", window.StartMoving)
+	window:SetScript("OnDragStop", window.StopMovingOrSizing)
+	table.insert(UISpecialFrames, "WayfinderSettings") -- Escape closes it
+	window:Hide()
+
+	local page = CreateFrame("Frame", nil, window.Inset)
+	page:SetAllPoints()
+	BuildPage(page, -4)
 end
 
 function ModuleSettings.Init()
@@ -328,15 +357,16 @@ function ModuleSettings.Init()
 	end
 	local canvas = CreateFrame("Frame", nil, UIParent)
 	canvas:Hide()
-	BuildPage(canvas)
-	category = Settings.RegisterCanvasLayoutCategory(canvas, "Wayfinder")
-	Settings.RegisterAddOnCategory(category)
+	local title = canvas:CreateFontString(nil, "OVERLAY", "GameFontHighlightHuge")
+	title:SetPoint("TOPLEFT", 16, -16)
+	title:SetText("Wayfinder")
+	BuildPage(canvas, -48)
+	Settings.RegisterAddOnCategory(Settings.RegisterCanvasLayoutCategory(canvas, "Wayfinder"))
 end
 
+-- Toggles the standalone window.
 function ModuleSettings.Open()
-	if category and Settings and Settings.OpenToCategory then
-		Settings.OpenToCategory(category:GetID())
-	else
-		print("|cffff4444Wayfinder|r settings panel isn't available on this client.")
-	end
+	if not PC.db then return end
+	if not window then BuildWindow() end
+	window:SetShown(not window:IsShown())
 end
